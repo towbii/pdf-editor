@@ -3,6 +3,8 @@
 #include <QHBoxLayout>
 #include <QFormLayout>
 #include <QPushButton>
+#include <QMimeData>
+#include <QUrl>
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QLabel>
@@ -16,13 +18,14 @@
 MergeDialog::MergeDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle(tr("Merge PDFs"));
     setMinimumSize(480, 340);
+    setAcceptDrops(true);
 
     auto *lay = new QVBoxLayout(this);
     lay->setSpacing(10);
     lay->setContentsMargins(16, 16, 16, 16);
 
     auto *hint = new QLabel(
-        tr("Select one or more PDF files.\n"
+        tr("Select one or more PDF files — or drag &amp; drop them here.\n"
            "Their pages will be appended to the current document."));
     hint->setWordWrap(true);
     hint->setStyleSheet("color:#888; font-size:12px;");
@@ -45,8 +48,7 @@ MergeDialog::MergeDialog(QWidget *parent) : QDialog(parent) {
         QStringList files = QFileDialog::getOpenFileNames(
             this, tr("Select PDF Files"), {},
             tr("PDF Files (*.pdf);;All Files (*)"));
-        for (const QString &f : files)
-            m_list->addItem(new QListWidgetItem(f));
+        for (const QString &f : files) addPath(f);
     });
     connect(remBtn, &QPushButton::clicked, this, [=]() {
         qDeleteAll(m_list->selectedItems());
@@ -72,6 +74,31 @@ QStringList MergeDialog::selectedPaths() const {
     for (int i = 0; i < m_list->count(); ++i)
         out << m_list->item(i)->text();
     return out;
+}
+
+void MergeDialog::addPath(const QString &path) {
+    // Avoid duplicates
+    for (int i = 0; i < m_list->count(); ++i)
+        if (m_list->item(i)->text() == path) return;
+    m_list->addItem(new QListWidgetItem(path));
+}
+
+void MergeDialog::dragEnterEvent(QDragEnterEvent *ev) {
+    if (!ev->mimeData()->hasUrls()) return;
+    for (const QUrl &u : ev->mimeData()->urls()) {
+        if (u.toLocalFile().toLower().endsWith(".pdf")) {
+            ev->acceptProposedAction();
+            return;
+        }
+    }
+}
+
+void MergeDialog::dropEvent(QDropEvent *ev) {
+    for (const QUrl &u : ev->mimeData()->urls()) {
+        QString p = u.toLocalFile();
+        if (p.toLower().endsWith(".pdf")) addPath(p);
+    }
+    ev->acceptProposedAction();
 }
 
 // SplitDialog

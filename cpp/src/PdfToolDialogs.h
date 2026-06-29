@@ -7,13 +7,19 @@
 #include <QSlider>
 #include <QString>
 #include <QList>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 
 class MergeDialog : public QDialog {
 public:
     explicit MergeDialog(QWidget *parent = nullptr);
     QStringList selectedPaths() const;
+protected:
+    void dragEnterEvent(QDragEnterEvent *ev) override;
+    void dropEvent(QDropEvent *ev) override;
 private:
     QListWidget *m_list = nullptr;
+    void addPath(const QString &path);
 };
 
 class SplitDialog : public QDialog {

@@ -131,7 +131,9 @@ private:
     bool m_penDown = false;
 
     // eraser
-    bool m_erasing = false;
+    bool    m_erasing           = false;
+    bool    m_needsEraserReload = false;
+    QTimer *m_eraserTimer       = nullptr;
 
     // signature hover position (for floating preview before drag)
     QPoint m_sigHoverPos;

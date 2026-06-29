@@ -1356,5 +1356,33 @@ void MainWindow::dragEnterEvent(QDragEnterEvent *ev) {
 
 void MainWindow::dropEvent(QDropEvent *ev) {
     const auto urls = ev->mimeData()->urls();
-    if (!urls.isEmpty()) openFile(urls.first().toLocalFile());
+    if (urls.isEmpty()) return;
+
+    // Collect PDF paths from the drop
+    QStringList pdfPaths;
+    for (const QUrl &u : urls) {
+        QString path = u.toLocalFile();
+        if (path.toLower().endsWith(".pdf")) pdfPaths << path;
+    }
+
+    // If a document is already open and PDFs were dropped, offer to merge
+    if (m_pdf->isOpen() && !pdfPaths.isEmpty()) {
+        auto btn = QMessageBox::question(this, tr("PDF dropped"),
+            tr("A PDF is already open.\n\nAppend the dropped file(s) to the current document, or open as a new document?"),
+            tr("Append"), tr("Open new"), QString(), 0, 1);
+        if (btn == 0) {
+            if (!m_pdf->mergeFrom(pdfPaths))
+                QMessageBox::warning(this, tr("Merge failed"),
+                    tr("Could not merge one or more files."));
+            m_view->setDocument(m_pdf);
+            m_thumbs->setDocument(m_pdf);
+            onModified();
+            return;
+        }
+        // else fall through → open as new
+    }
+
+    // Open first dropped file (non-PDF or "open new" chosen)
+    QString first = urls.first().toLocalFile();
+    openFile(first);
 }

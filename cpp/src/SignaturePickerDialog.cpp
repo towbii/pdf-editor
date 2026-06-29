@@ -13,9 +13,12 @@
 #include <QMessageBox>
 #include <QListWidgetItem>
 #include <QPainter>
+#include <QMimeData>
+#include <QUrl>
 
 SignaturePickerDialog::SignaturePickerDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle(tr("Select Signature"));
+    setAcceptDrops(true);
     setMinimumSize(640, 700);
 
     m_sigsDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
@@ -51,6 +54,11 @@ SignaturePickerDialog::SignaturePickerDialog(QWidget *parent) : QDialog(parent) 
         "QListWidget::item:selected { background: #0C3F6C; border: 1px solid #0078D4; }"
         "QListWidget::item:hover { background: #3A3A3A; }");
     lay->addWidget(m_list);
+
+    auto *dropHint = new QLabel(tr("↓ Drag a PNG or JPG here to import as signature"));
+    dropHint->setAlignment(Qt::AlignCenter);
+    dropHint->setStyleSheet("color:#666; font-size:11px; padding:4px;");
+    lay->addWidget(dropHint);
 
     // Preview — tall enough to show a full signature comfortably
     m_preview = new QLabel(tr("No selection"));
@@ -176,4 +184,40 @@ void SignaturePickerDialog::deleteSelected() {
     m_selected.clear();
     m_preview->setText(tr("No selection"));
     loadSignatures();
+}
+
+void SignaturePickerDialog::importImage(const QString &path) {
+    QPixmap px(path);
+    if (px.isNull()) return;
+    QString ts   = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    QString dest = m_sigsDir + "/Signature_" + ts + ".png";
+    if (!px.save(dest, "PNG")) return;
+    loadSignatures();
+    for (int i = 0; i < m_list->count(); i++) {
+        if (m_list->item(i)->data(Qt::UserRole).toString() == dest) {
+            m_list->setCurrentRow(i);
+            break;
+        }
+    }
+}
+
+void SignaturePickerDialog::dragEnterEvent(QDragEnterEvent *ev) {
+    if (!ev->mimeData()->hasUrls()) return;
+    for (const QUrl &u : ev->mimeData()->urls()) {
+        QString p = u.toLocalFile().toLower();
+        if (p.endsWith(".png") || p.endsWith(".jpg") || p.endsWith(".jpeg")) {
+            ev->acceptProposedAction();
+            return;
+        }
+    }
+}
+
+void SignaturePickerDialog::dropEvent(QDropEvent *ev) {
+    for (const QUrl &u : ev->mimeData()->urls()) {
+        QString p = u.toLocalFile();
+        QString pl = p.toLower();
+        if (pl.endsWith(".png") || pl.endsWith(".jpg") || pl.endsWith(".jpeg"))
+            importImage(p);
+    }
+    ev->acceptProposedAction();
 }

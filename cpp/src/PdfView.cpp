@@ -39,7 +39,7 @@ PdfView::PdfView(PdfDocument *doc, QWidget *parent)
 
     m_zoomTimer = new QTimer(this);
     m_zoomTimer->setSingleShot(true);
-    m_zoomTimer->setInterval(120);
+    m_zoomTimer->setInterval(80);
     connect(m_zoomTimer, &QTimer::timeout, this, [this]() {
         if (m_pendingZoom > 0) applyZoom(m_pendingZoom);
         m_pendingZoom = -1.f;
@@ -82,7 +82,6 @@ void PdfView::buildPages() {
 
 void PdfView::applyZoom(float zoom) {
     m_zoom = zoom;
-    emit zoomChanged(zoom);
     for (auto *pw : m_pages) pw->reload();
     m_resizeTimer->start();
 }
@@ -108,11 +107,8 @@ void PdfView::updateContainerGeometry() {
 }
 
 void PdfView::setZoom(float zoom) {
-    float factor = zoom / m_zoom;
     m_zoom = zoom;
     emit zoomChanged(zoom);
-    for (auto *pw : m_pages) pw->scalePixmapPreview(factor);
-    m_resizeTimer->start();
     m_pendingZoom = zoom;
     m_zoomTimer->start();
 }
@@ -212,6 +208,12 @@ void PdfView::wheelEvent(QWheelEvent *ev) {
 PdfPageWidget::PdfPageWidget(int pageNum, PdfView *view)
     : QWidget(nullptr), m_pageNum(pageNum), m_view(view) {
     setMouseTracking(true);
+    m_eraserTimer = new QTimer(this);
+    m_eraserTimer->setSingleShot(true);
+    m_eraserTimer->setInterval(80);
+    connect(m_eraserTimer, &QTimer::timeout, this, [this]() {
+        if (m_needsEraserReload) { m_needsEraserReload = false; reload(); }
+    });
 }
 
 void PdfPageWidget::reload() {
@@ -636,11 +638,10 @@ void PdfPageWidget::mouseMoveEvent(QMouseEvent *ev) {
 
     case Tool::Eraser:
         if (m_erasing && (ev->buttons() & Qt::LeftButton)) {
-            if (doc) {
-                if (doc->deleteAnnotAt(m_pageNum, (float)pdf.x(), (float)pdf.y())) {
-                    reload();
-                    emit m_view->modified();
-                }
+            if (doc && doc->deleteAnnotAt(m_pageNum, (float)pdf.x(), (float)pdf.y())) {
+                m_needsEraserReload = true;
+                m_eraserTimer->start();
+                emit m_view->modified();
             }
         }
         break;
@@ -778,6 +779,8 @@ void PdfPageWidget::mouseReleaseEvent(QMouseEvent *ev) {
     }
     case Tool::Eraser:
         m_erasing = false;
+        m_eraserTimer->stop();
+        if (m_needsEraserReload) { m_needsEraserReload = false; reload(); }
         break;
     case Tool::Signature: {
         if (!m_sigSizing) break;
