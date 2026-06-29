@@ -35,8 +35,9 @@ venv/
 # Claude Code memory (private)
 .claude/
 
-# Release zips
+# Release zips and compiled installers
 *.zip
+installer/output/
 
 # Temp
 *.tmp
