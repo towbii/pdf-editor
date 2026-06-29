@@ -65,7 +65,6 @@ bool PdfDocument::open(const QString &path) {
 bool PdfDocument::save(const QString &path) {
     if (!m_pdoc) return false;
     QString dest = path.isEmpty() ? m_filePath : path;
-    // Write to a temp file first, then rename — avoids any leftover file handles.
     QString tmp = dest + ".~tmp";
     QByteArray utf8Tmp = tmp.toUtf8();
     pdf_write_options opts = pdf_default_write_options;
@@ -110,7 +109,7 @@ QByteArray PdfDocument::toBytes() const {
     fz_buffer *buf = nullptr;
     fz_output *out = nullptr;
     pdf_write_options opts = pdf_default_write_options;
-    opts.do_garbage = 0;
+    opts.do_garbage  = 0;
     opts.do_compress = 1;
     fz_try(m_ctx) {
         buf = fz_new_buffer(m_ctx, 1 << 20);
@@ -148,8 +147,12 @@ bool PdfDocument::fromBytes(const QByteArray &data) {
     if (ok) {
         if (m_docBuf) fz_drop_buffer(m_ctx, m_docBuf);
         m_docBuf = newBuf;
+        // Flush MuPDF's page / resource store so the next render builds fresh
+        // display lists from the new document, not stale ones from the old.
+        fz_empty_store(m_ctx);
     }
     m_wordCache.clear();
+    m_charCache.clear();
     return ok;
 }
 
@@ -225,7 +228,7 @@ QPixmap PdfDocument::pixmapFromMupdf(fz_page *page, float zoom) const {
     return result;
 }
 
-QPixmap PdfDocument::renderPage(int pageNum, float zoom) const {
+QPixmap PdfDocument::renderPage(int pageNum, float zoom) {
     if (!m_doc || pageNum >= pageCount()) return {};
     QPixmap result;
     fz_try(m_ctx) {
@@ -255,6 +258,7 @@ QPixmap PdfDocument::renderThumbnail(int pageNum, int targetWidth) const {
 
 void PdfDocument::invalidatePage(int pageNum) {
     m_wordCache.remove(pageNum);
+    m_charCache.remove(pageNum);
 }
 
 QVector<WordBox> PdfDocument::getWords(int pageNum) {
@@ -302,6 +306,36 @@ QVector<WordBox> PdfDocument::getWords(int pageNum) {
     return words;
 }
 
+QVector<CharBox> PdfDocument::getChars(int pageNum) {
+    if (m_charCache.contains(pageNum)) return m_charCache[pageNum];
+    QVector<CharBox> chars;
+    if (!m_doc || pageNum >= pageCount()) return chars;
+    fz_try(m_ctx) {
+        fz_page *page = fz_load_page(m_ctx, m_doc, pageNum);
+        fz_stext_options opts{};
+        fz_stext_page *stext = fz_new_stext_page_from_page(m_ctx, page, &opts);
+        for (fz_stext_block *blk = stext->first_block; blk; blk = blk->next) {
+            if (blk->type != FZ_STEXT_BLOCK_TEXT) continue;
+            for (fz_stext_line *ln = blk->u.t.first_line; ln; ln = ln->next) {
+                for (fz_stext_char *ch = ln->first_char; ch; ch = ch->next) {
+                    if (ch->c < 32) continue;
+                    fz_rect bbox = fz_rect_from_quad(ch->quad);
+                    if (fz_is_empty_rect(bbox)) continue;
+                    CharBox cb;
+                    cb.ch = QChar(ch->c);
+                    cb.x0 = qMin(bbox.x0, bbox.x1); cb.y0 = qMin(bbox.y0, bbox.y1);
+                    cb.x1 = qMax(bbox.x0, bbox.x1); cb.y1 = qMax(bbox.y0, bbox.y1);
+                    chars.append(cb);
+                }
+            }
+        }
+        fz_drop_stext_page(m_ctx, stext);
+        fz_drop_page(m_ctx, page);
+    } fz_catch(m_ctx) {}
+    m_charCache[pageNum] = chars;
+    return chars;
+}
+
 // ──────────────────────────────────────────────
 // Annotation helpers
 // ──────────────────────────────────────────────
@@ -326,38 +360,80 @@ bool PdfDocument::addHighlight(int pageNum,
     snapshot();
     bool ok = false;
     fz_try(m_ctx) {
-        fz_rect sel = fz_make_rect(qMin(x0,x1), qMin(y0,y1), qMax(x0,x1), qMax(y0,y1));
-        // gather quads from words that intersect sel
-        fz_page *page = (fz_page*)pp;
-        fz_stext_options opts{};
-        fz_stext_page *stext = fz_new_stext_page_from_page(m_ctx, page, &opts);
-        QVector<fz_quad> quads;
-        for (fz_stext_block *blk = stext->first_block; blk; blk = blk->next) {
-            if (blk->type != FZ_STEXT_BLOCK_TEXT) continue;
-            for (fz_stext_line *ln = blk->u.t.first_line; ln; ln = ln->next) {
-                for (fz_stext_char *ch = ln->first_char; ch; ch = ch->next) {
-                    fz_rect cr = fz_rect_from_quad(ch->quad);
-                    if (!fz_is_empty_rect(fz_intersect_rect(cr, sel)))
-                        quads.append(ch->quad);
+        float xLo = qMin(x0, x1), xHi = qMax(x0, x1);
+        float yLo = qMin(y0, y1), yHi = qMax(y0, y1);
+        float color[3] = {r, g, b};
+
+        // ── Step 1: rectangle-based text selection.
+        // Only characters whose bounding box intersects the drag rect are included.
+        // fz_highlight_selection is a cursor algorithm (selects everything between two
+        // points in reading order) — it grabs text outside the drag area. Here we want
+        // exactly what's inside the drawn rectangle, merged into one quad per line.
+        bool useRect = true;
+        {
+            fz_stext_options opts{};
+            fz_stext_page *stext = fz_new_stext_page_from_page(m_ctx, (fz_page*)pp, &opts);
+            if (stext) {
+                fz_rect sel = fz_make_rect(xLo, yLo, xHi, yHi);
+                QVector<fz_quad> quads;
+
+                for (fz_stext_block *blk = stext->first_block; blk; blk = blk->next) {
+                    if (blk->type != FZ_STEXT_BLOCK_TEXT) continue;
+                    for (fz_stext_line *ln = blk->u.t.first_line; ln; ln = ln->next) {
+                        fz_quad lineQ{};
+                        bool gotChar = false;
+                        for (fz_stext_char *ch = ln->first_char; ch; ch = ch->next) {
+                            if (ch->c < 32) continue;
+                            fz_rect cr = fz_rect_from_quad(ch->quad);
+                            if (fz_is_empty_rect(fz_intersect_rect(cr, sel))) continue;
+                            if (!gotChar) {
+                                lineQ = ch->quad;
+                                gotChar = true;
+                            } else {
+                                // Expand the line quad to cover this character.
+                                // fitz device space: y increases downward, so
+                                // ul/ur have smaller y (top) and ll/lr have larger y (bottom).
+                                lineQ.ul.x = std::min(lineQ.ul.x, ch->quad.ul.x);
+                                lineQ.ul.y = std::min(lineQ.ul.y, ch->quad.ul.y);
+                                lineQ.ur.x = std::max(lineQ.ur.x, ch->quad.ur.x);
+                                lineQ.ur.y = std::min(lineQ.ur.y, ch->quad.ur.y);
+                                lineQ.ll.x = std::min(lineQ.ll.x, ch->quad.ll.x);
+                                lineQ.ll.y = std::max(lineQ.ll.y, ch->quad.ll.y);
+                                lineQ.lr.x = std::max(lineQ.lr.x, ch->quad.lr.x);
+                                lineQ.lr.y = std::max(lineQ.lr.y, ch->quad.lr.y);
+                            }
+                        }
+                        if (gotChar) quads.append(lineQ);
+                    }
+                }
+                fz_drop_stext_page(m_ctx, stext);
+
+                if (!quads.isEmpty()) {
+                    pdf_annot *annot = pdf_create_annot(m_ctx, pp, PDF_ANNOT_HIGHLIGHT);
+                    pdf_set_annot_quad_points(m_ctx, annot, quads.size(), quads.constData());
+                    pdf_set_annot_color(m_ctx, annot, 3, color);
+                    pdf_set_annot_opacity(m_ctx, annot, 0.4f);
+                    pdf_update_annot(m_ctx, annot);
+                    ok = true;
+                    useRect = false;
                 }
             }
         }
-        fz_drop_stext_page(m_ctx, stext);
 
-        pdf_annot *annot = pdf_create_annot(m_ctx, pp, PDF_ANNOT_HIGHLIGHT);
-        if (!quads.isEmpty()) {
-            pdf_set_annot_quad_points(m_ctx, annot,
-                quads.size(), quads.constData());
-        } else {
-            // fallback: use the rect as a single quad
-            fz_quad q = fz_quad_from_rect(sel);
-            pdf_set_annot_quad_points(m_ctx, annot, 1, &q);
+        // ── Step 2: flat rectangle fallback — no text under cursor.
+        // Use PDF_ANNOT_SQUARE for sharp corners.
+        // PDF_ANNOT_HIGHLIGHT always renders Bézier-curved corners by design.
+        if (useRect) {
+            float h = qMax(yHi - yLo, 10.f);
+            fz_rect rectArea = fz_make_rect(xLo, yLo, xHi, yLo + h);
+            pdf_annot *annot = pdf_create_annot(m_ctx, pp, PDF_ANNOT_SQUARE);
+            pdf_set_annot_rect(m_ctx, annot, rectArea);
+            pdf_set_annot_interior_color(m_ctx, annot, 3, color);
+            pdf_set_annot_border_width(m_ctx, annot, 0.f);
+            pdf_set_annot_opacity(m_ctx, annot, 0.4f);
+            pdf_update_annot(m_ctx, annot);
+            ok = true;
         }
-        float color[3] = {r, g, b};
-        pdf_set_annot_color(m_ctx, annot, 3, color);
-        pdf_set_annot_opacity(m_ctx, annot, 0.5f);
-        pdf_update_annot(m_ctx, annot);
-        ok = true;
     } fz_catch(m_ctx) {
         qWarning() << "addHighlight:" << fz_caught_message(m_ctx);
     }
@@ -373,9 +449,9 @@ bool PdfDocument::addHighlight(int pageNum,
 bool PdfDocument::addInkStroke(int pageNum, const QVector<QPointF> &pts,
                                 float r, float g, float b, float width) {
     if (pts.size() < 2) return false;
+    snapshot();
     pdf_page *pp = loadPdfPage(pageNum);
     if (!pp) return false;
-    snapshot();
     bool ok = false;
     fz_try(m_ctx) {
         QVector<fz_point> fpts;
@@ -518,66 +594,293 @@ bool PdfDocument::updateFreetext(int pageNum, float x, float y,
 }
 
 // ──────────────────────────────────────────────
-// Eraser
-// ──────────────────────────────────────────────
+QRectF PdfDocument::freetextRectAt(int pageNum, float x, float y) const {
+    pdf_page *pp = loadPdfPage(pageNum);
+    if (!pp) return {};
+    QRectF result;
+    fz_try(m_ctx) {
+        fz_rect mediabox; fz_matrix ctm;
+        pdf_page_transform(m_ctx, pp, &mediabox, &ctm);
+        float pageH = mediabox.y1 - mediabox.y0;
+        fz_point pt      = {x, y};
+        fz_point pt_flip = {x, pageH - y};
+        for (pdf_annot *annot = pdf_first_annot(m_ctx, pp);
+             annot; annot = pdf_next_annot(m_ctx, annot)) {
+            if (pdf_annot_type(m_ctx, annot) != PDF_ANNOT_FREE_TEXT) continue;
+            fz_rect r = pdf_annot_rect(m_ctx, annot);
+            float rx0 = qMin(r.x0,r.x1), rx1 = qMax(r.x0,r.x1);
+            float ry0 = qMin(r.y0,r.y1), ry1 = qMax(r.y0,r.y1);
+            fz_rect hit = fz_make_rect(rx0-6, ry0-6, rx1+6, ry1+6);
+            if (fz_is_point_inside_rect(pt, hit) || fz_is_point_inside_rect(pt_flip, hit)) {
+                result = QRectF(rx0, ry0, rx1-rx0, ry1-ry0);
+                break;
+            }
+        }
+    } fz_catch(m_ctx) {}
+    fz_drop_page(m_ctx, (fz_page*)pp);
+    return result;
+}
+
+bool PdfDocument::moveFreetext(int pageNum, const QRectF &oldRect, float dx, float dy) {
+    pdf_page *pp = loadPdfPage(pageNum);
+    if (!pp) return false;
+    bool ok = false;
+    fz_try(m_ctx) {
+        fz_rect mediabox; fz_matrix ctm;
+        pdf_page_transform(m_ctx, pp, &mediabox, &ctm);
+        float pageH = mediabox.y1 - mediabox.y0;
+        // find the annotation whose rect matches oldRect
+        for (pdf_annot *annot = pdf_first_annot(m_ctx, pp);
+             annot; annot = pdf_next_annot(m_ctx, annot)) {
+            if (pdf_annot_type(m_ctx, annot) != PDF_ANNOT_FREE_TEXT) continue;
+            fz_rect r = pdf_annot_rect(m_ctx, annot);
+            float rx0 = qMin(r.x0,r.x1), ry0 = qMin(r.y0,r.y1);
+            float rx1 = qMax(r.x0,r.x1), ry1 = qMax(r.y0,r.y1);
+            // match with a bit of tolerance
+            if (qAbs(rx0 - (float)oldRect.x()) > 4 || qAbs(ry0 - (float)oldRect.y()) > 4) continue;
+            snapshot();
+            // coords may be y-up or y-down depending on the annot's CTM;
+            // freetextRectAt stores them in screen space (y-down), so we offset
+            // in screen space and convert back
+            float newX0 = rx0 + dx;
+            float newY0 = ry0 + dy;
+            float newX1 = rx1 + dx;
+            float newY1 = ry1 + dy;
+            // clamp to page bounds
+            float pw = (float)pageSize(pageNum).width;
+            float ph = (float)pageSize(pageNum).height;
+            float w = newX1 - newX0, h = newY1 - newY0;
+            newX0 = qBound(0.f, newX0, pw - w);
+            newY0 = qBound(0.f, newY0, ph - h);
+            fz_rect newR = fz_make_rect(newX0, newY0, newX0+w, newY0+h);
+            // if the stored rect was y-flipped, flip back
+            if (r.y0 > r.y1) {
+                newR = fz_make_rect(newX0, pageH - newY0, newX0+w, pageH - (newY0+h));
+            }
+            pdf_set_annot_rect(m_ctx, annot, newR);
+            pdf_update_annot(m_ctx, annot);
+            ok = true;
+            break;
+        }
+    } fz_catch(m_ctx) {
+        qWarning() << "moveFreetext:" << fz_caught_message(m_ctx);
+    }
+    fz_drop_page(m_ctx, (fz_page*)pp);
+    if (ok) invalidatePage(pageNum);
+    return ok;
+}
+
+// Returns true if point (pt or pt_flip) hits the annotation rect (or raw dict rect).
+static bool annotHitTest(fz_context *ctx, pdf_annot *a,
+                          fz_point pt, fz_point pt_flip, float margin,
+                          fz_rect *outRect = nullptr) {
+    // Test 1: CTM-transformed rect (device space)
+    fz_rect r = pdf_annot_rect(ctx, a);
+    float rx0 = qMin(r.x0,r.x1), rx1 = qMax(r.x0,r.x1);
+    float ry0 = qMin(r.y0,r.y1), ry1 = qMax(r.y0,r.y1);
+    fz_rect hr = fz_make_rect(rx0-margin, ry0-margin, rx1+margin, ry1+margin);
+    if (fz_is_point_inside_rect(pt, hr) || fz_is_point_inside_rect(pt_flip, hr)) {
+        if (outRect) *outRect = r;
+        return true;
+    }
+    // Test 2: raw /Rect from PDF dict (PDF user-space, no CTM)
+    fz_rect raw = pdf_dict_get_rect(ctx, pdf_annot_obj(ctx, a), PDF_NAME(Rect));
+    rx0 = qMin(raw.x0,raw.x1); rx1 = qMax(raw.x0,raw.x1);
+    ry0 = qMin(raw.y0,raw.y1); ry1 = qMax(raw.y0,raw.y1);
+    hr = fz_make_rect(rx0-margin, ry0-margin, rx1+margin, ry1+margin);
+    if (fz_is_point_inside_rect(pt, hr) || fz_is_point_inside_rect(pt_flip, hr)) {
+        if (outRect) *outRect = raw;
+        return true;
+    }
+    return false;
+}
+
+QRectF PdfDocument::annotRectAt(int pageNum, float x, float y) const {
+    pdf_page *pp = loadPdfPage(pageNum);
+    if (!pp) return {};
+    QRectF result;
+    fz_try(m_ctx) {
+        fz_rect mb; fz_matrix ctm;
+        pdf_page_transform(m_ctx, pp, &mb, &ctm);
+        float pageH = mb.y1 - mb.y0;
+        fz_point pt      = {x, y};
+        fz_point pt_flip = {x, pageH - y};
+        for (pdf_annot *a = pdf_first_annot(m_ctx, pp); a; a = pdf_next_annot(m_ctx, a)) {
+            fz_rect r;
+            if (annotHitTest(m_ctx, a, pt, pt_flip, 40.f, &r)) {
+                result = QRectF(qMin(r.x0,r.x1), qMin(r.y0,r.y1),
+                                qAbs(r.x1-r.x0), qAbs(r.y1-r.y0));
+                break;
+            }
+        }
+    } fz_catch(m_ctx) {}
+    fz_drop_page(m_ctx, (fz_page*)pp);
+    return result;
+}
+
+bool PdfDocument::moveAnnotAt(int pageNum, float x, float y, float dx, float dy) {
+    pdf_page *pp = loadPdfPage(pageNum);
+    if (!pp) return false;
+    bool ok = false;
+    fz_try(m_ctx) {
+        fz_rect mb; fz_matrix ctm;
+        pdf_page_transform(m_ctx, pp, &mb, &ctm);
+        float pageH = mb.y1 - mb.y0;
+        fz_point pt      = {x, y};
+        fz_point pt_flip = {x, pageH - y};
+        const float margin = 40.f;
+
+        for (pdf_annot *a = pdf_first_annot(m_ctx, pp); a; a = pdf_next_annot(m_ctx, a)) {
+            fz_rect r;
+            if (!annotHitTest(m_ctx, a, pt, pt_flip, margin, &r))
+                continue;
+
+            int type = pdf_annot_type(m_ctx, a);
+            snapshot();
+
+            if (type == PDF_ANNOT_INK) {
+                // Rebuild ink list with offset points
+                int ns = pdf_annot_ink_list_count(m_ctx, a);
+                QVector<int> counts;
+                QVector<fz_point> pts;
+                for (int s = 0; s < ns; s++) {
+                    int np = pdf_annot_ink_list_stroke_count(m_ctx, a, s);
+                    counts.append(np);
+                    for (int k = 0; k < np; k++) {
+                        fz_point vp = pdf_annot_ink_list_stroke_vertex(m_ctx, a, s, k);
+                        vp.x += dx; vp.y += dy;
+                        pts.append(vp);
+                    }
+                }
+                pdf_set_annot_ink_list(m_ctx, a, ns, counts.constData(), pts.constData());
+            } else {
+                // Move the annotation's /Rect
+                fz_rect newR = fz_make_rect(r.x0+dx, r.y0+dy, r.x1+dx, r.y1+dy);
+                pdf_set_annot_rect(m_ctx, a, newR);
+            }
+            pdf_update_annot(m_ctx, a);
+            ok = true;
+            break;
+        }
+    } fz_catch(m_ctx) {
+        qWarning() << "moveAnnotAt:" << fz_caught_message(m_ctx);
+    }
+    fz_drop_page(m_ctx, (fz_page*)pp);
+    if (ok) invalidatePage(pageNum);
+    return ok;
+}
+
+bool PdfDocument::resizeAnnotAt(int pageNum, float x, float y,
+                                 float newX0, float newY0, float newX1, float newY1) {
+    pdf_page *pp = loadPdfPage(pageNum);
+    if (!pp) return false;
+    bool ok = false;
+    fz_try(m_ctx) {
+        fz_rect mb; fz_matrix ctm;
+        pdf_page_transform(m_ctx, pp, &mb, &ctm);
+        float pageH = mb.y1 - mb.y0;
+        fz_point pt      = {x, y};
+        fz_point pt_flip = {x, pageH - y};
+        const float margin = 40.f;
+
+        for (pdf_annot *a = pdf_first_annot(m_ctx, pp); a; a = pdf_next_annot(m_ctx, a)) {
+            fz_rect r = pdf_annot_rect(m_ctx, a);
+            float rx0 = qMin(r.x0,r.x1), rx1 = qMax(r.x0,r.x1);
+            float ry0 = qMin(r.y0,r.y1), ry1 = qMax(r.y0,r.y1);
+            float rw = rx1 - rx0, rh = ry1 - ry0;
+            fz_rect hr = fz_make_rect(rx0-margin, ry0-margin, rx1+margin, ry1+margin);
+            if (!fz_is_point_inside_rect(pt, hr) && !fz_is_point_inside_rect(pt_flip, hr))
+                continue;
+
+            int type = pdf_annot_type(m_ctx, a);
+            snapshot();
+
+            if (type == PDF_ANNOT_INK && rw > 0.f && rh > 0.f) {
+                // Scale ink points into new bounding box
+                float scaleX = (newX1 - newX0) / rw;
+                float scaleY = (newY1 - newY0) / rh;
+                int ns = pdf_annot_ink_list_count(m_ctx, a);
+                QVector<int> counts;
+                QVector<fz_point> pts;
+                for (int s = 0; s < ns; s++) {
+                    int np = pdf_annot_ink_list_stroke_count(m_ctx, a, s);
+                    counts.append(np);
+                    for (int k = 0; k < np; k++) {
+                        fz_point vp = pdf_annot_ink_list_stroke_vertex(m_ctx, a, s, k);
+                        vp.x = newX0 + (vp.x - rx0) * scaleX;
+                        vp.y = newY0 + (vp.y - ry0) * scaleY;
+                        pts.append(vp);
+                    }
+                }
+                pdf_set_annot_ink_list(m_ctx, a, ns, counts.constData(), pts.constData());
+            } else {
+                // Resize by setting new /Rect
+                pdf_set_annot_rect(m_ctx, a, fz_make_rect(newX0, newY0, newX1, newY1));
+            }
+            pdf_update_annot(m_ctx, a);
+            ok = true;
+            break;
+        }
+    } fz_catch(m_ctx) {
+        qWarning() << "resizeAnnotAt:" << fz_caught_message(m_ctx);
+    }
+    fz_drop_page(m_ctx, (fz_page*)pp);
+    if (ok) invalidatePage(pageNum);
+    return ok;
+}
 
 bool PdfDocument::deleteAnnotAt(int pageNum, float x, float y) {
     pdf_page *pp = loadPdfPage(pageNum);
     if (!pp) return false;
     bool ok = false;
     fz_try(m_ctx) {
-        // Get page height to try both coordinate orientations
-        fz_rect mediabox;
-        fz_matrix ctm;
-        pdf_page_transform(m_ctx, pp, &mediabox, &ctm);
-        float pageH = mediabox.y1 - mediabox.y0;
-
-        fz_point pt      = {x, y};
-        fz_point pt_flip = {x, pageH - y};
-
+        // Collect annotations newest-first so we erase the topmost one.
         QVector<pdf_annot*> annots;
         for (pdf_annot *a = pdf_first_annot(m_ctx, pp); a; a = pdf_next_annot(m_ctx, a))
             annots.prepend(a);
 
-        for (pdf_annot *a : annots) {
-            int atype = pdf_annot_type(m_ctx, a);
-            bool hit = false;
+        if (!annots.isEmpty()) {
+            // Render at 1× zoom: toPdf() already gives fitz device coords at 1× zoom,
+            // so the cursor pixel (cx, cy) matches exactly without scaling.
+            // fz_run_page rebuilds the display from scratch each call (no display-list
+            // cache is involved), so we don't need to empty the store between renders.
+            const float Z = 1.0f;
+            const int R = 4;   // hit radius in pixels (= PDF points at 1×)
+            int cx = qRound(x), cy = qRound(y);
 
-            if (atype == PDF_ANNOT_INK) {
-                // Direct proximity check against ink stroke vertices
-                int ns = pdf_annot_ink_list_count(m_ctx, a);
-                for (int s = 0; s < ns && !hit; s++) {
-                    int np = pdf_annot_ink_list_stroke_count(m_ctx, a, s);
-                    fz_point prev = {-1e9f, -1e9f};
-                    for (int k = 0; k < np && !hit; k++) {
-                        fz_point p = pdf_annot_ink_list_stroke_vertex(m_ctx, a, s, k);
-                        if (hypotf(p.x - x, p.y - y) < 30.f) { hit = true; break; }
-                        if (k > 0) {
-                            float dx = p.x - prev.x, dy = p.y - prev.y;
-                            float len2 = dx*dx + dy*dy;
-                            if (len2 > 1.f) {
-                                float t = ((x-prev.x)*dx + (y-prev.y)*dy) / len2;
-                                t = (t < 0.f) ? 0.f : ((t > 1.f) ? 1.f : t);
-                                float nx = prev.x + t*dx, ny = prev.y + t*dy;
-                                if (hypotf(nx - x, ny - y) < 20.f) hit = true;
-                            }
-                        }
-                        prev = p;
+            QImage base = pixmapFromMupdf((fz_page*)pp, Z).toImage();
+
+            for (pdf_annot *a : annots) {
+                pdf_obj *obj = pdf_annot_obj(m_ctx, a);
+                pdf_obj *fObj = pdf_dict_get(m_ctx, obj, PDF_NAME(F));
+                int savedF = pdf_to_int(m_ctx, fObj);
+
+                // Hide the annotation and re-render.
+                pdf_dict_put_int(m_ctx, obj, PDF_NAME(F), savedF | 2 /*PDF_ANNOT_IS_HIDDEN*/);
+                QImage hidden = pixmapFromMupdf((fz_page*)pp, Z).toImage();
+
+                // Restore the flag.
+                if (savedF) pdf_dict_put_int(m_ctx, obj, PDF_NAME(F), savedF);
+                else        pdf_dict_del(m_ctx, obj, PDF_NAME(F));
+
+                // If any pixel within the radius changed, the annotation covers the cursor.
+                bool hit = false;
+                for (int dy = -R; dy <= R && !hit; ++dy) {
+                    for (int dx = -R; dx <= R && !hit; ++dx) {
+                        int px = cx + dx, py = cy + dy;
+                        if (px >= 0 && px < base.width() &&
+                            py >= 0 && py < base.height() &&
+                            base.pixel(px, py) != hidden.pixel(px, py))
+                            hit = true;
                     }
                 }
-            } else {
-                fz_rect r = pdf_annot_rect(m_ctx, a);
-                float rx0 = qMin(r.x0,r.x1), rx1 = qMax(r.x0,r.x1);
-                float ry0 = qMin(r.y0,r.y1), ry1 = qMax(r.y0,r.y1);
-                fz_rect hit_r = fz_make_rect(rx0-20, ry0-20, rx1+20, ry1+20);
-                hit = fz_is_point_inside_rect(pt, hit_r) || fz_is_point_inside_rect(pt_flip, hit_r);
-            }
 
-            if (hit) {
-                snapshot();
-                pdf_delete_annot(m_ctx, pp, a);
-                ok = true;
-                break;
+                if (hit) {
+                    snapshot();
+                    pdf_delete_annot(m_ctx, pp, a);
+                    ok = true;
+                    break;
+                }
             }
         }
     } fz_catch(m_ctx) {
@@ -603,58 +906,24 @@ bool PdfDocument::insertImage(int pageNum, const QString &imgPath,
         QByteArray pathUtf8 = imgPath.toUtf8();
         img = fz_new_image_from_file(m_ctx, pathUtf8.constData());
 
-        // Register image as XObject in document
-        pdf_obj *imgobj = pdf_add_image(m_ctx, m_pdoc, img);
+        // Stamp annotation whose /Rect matches the desired placement.
+        // pdf_set_annot_rect takes fitz device-space coords (y-down, 1× zoom)
+        // and stores them as PDF user-space via the inverse page CTM.
+        fz_rect annot_rect = fz_make_rect(cx - w/2.f, cy - h/2.f,
+                                           cx + w/2.f, cy + h/2.f);
+        pdf_annot *annot = pdf_create_annot(m_ctx, pp, PDF_ANNOT_STAMP);
+        pdf_set_annot_rect(m_ctx, annot, annot_rect);
 
-        // Give it a unique name
-        char imgname[32];
-        snprintf(imgname, sizeof(imgname), "PEImg%d", m_imgSeq++);
+        // Use MuPDF's stamp-image API so that pdf_update_annot takes the
+        // image path (pdf_write_stamp_appearance_image) rather than the rubber-
+        // stamp path (pdf_write_stamp_appearance_rubber).  The rubber-stamp path
+        // modifies *rect to enforce a 190:50 aspect ratio, which would corrupt
+        // our /Rect and cause the image to appear horizontally stretched.
+        // The image path leaves /Rect intact and generates /BBox=[0,0,1,1];
+        // pdf_annot_transform then maps [0,0,1,1] → /Rect without distortion.
+        pdf_set_annot_stamp_image(m_ctx, annot, img);
+        pdf_update_annot(m_ctx, annot);
 
-        // Add to page resources/XObject dict
-        pdf_obj *res = pdf_page_resources(m_ctx, pp);
-        pdf_obj *xobj = pdf_dict_get(m_ctx, res, PDF_NAME(XObject));
-        if (!xobj || !pdf_is_dict(m_ctx, xobj)) {
-            xobj = pdf_new_dict(m_ctx, m_pdoc, 4);
-            pdf_dict_put(m_ctx, res, PDF_NAME(XObject), xobj);
-            pdf_drop_obj(m_ctx, xobj);
-            xobj = pdf_dict_get(m_ctx, res, PDF_NAME(XObject));
-        }
-        pdf_dict_puts(m_ctx, xobj, imgname, imgobj);
-        pdf_drop_obj(m_ctx, imgobj);
-
-        // Page height for PDF coordinate flip (PDF y=0 is bottom)
-        fz_rect pr = fz_bound_page(m_ctx, (fz_page*)pp);
-        float ph = pr.y1 - pr.y0;
-        float x0 = cx - w/2.f;
-        float y0 = ph - (cy + h/2.f); // flip to PDF bottom-left origin
-
-        // Write content stream fragment: q <matrix> cm /ImgName Do Q
-        char snippet[256];
-        snprintf(snippet, sizeof(snippet),
-                 "q %.4g 0 0 %.4g %.4g %.4g cm /%s Do Q\n",
-                 w, h, x0, y0, imgname);
-
-        // Create new stream for the snippet
-        fz_buffer *frag = fz_new_buffer_from_copied_data(m_ctx,
-            reinterpret_cast<const unsigned char*>(snippet), strlen(snippet));
-        pdf_obj *stream = pdf_add_stream(m_ctx, m_pdoc, frag, nullptr, 0);
-        fz_drop_buffer(m_ctx, frag);
-        frag = nullptr;
-
-        // Append to page Contents
-        pdf_obj *contents = pdf_dict_get(m_ctx, pp->obj, PDF_NAME(Contents));
-        if (!contents) {
-            pdf_dict_put(m_ctx, pp->obj, PDF_NAME(Contents), stream);
-        } else if (pdf_is_array(m_ctx, contents)) {
-            pdf_array_push(m_ctx, contents, stream);
-        } else {
-            pdf_obj *arr = pdf_new_array(m_ctx, m_pdoc, 2);
-            pdf_array_push(m_ctx, arr, contents);
-            pdf_array_push(m_ctx, arr, stream);
-            pdf_dict_put(m_ctx, pp->obj, PDF_NAME(Contents), arr);
-            pdf_drop_obj(m_ctx, arr);
-        }
-        pdf_drop_obj(m_ctx, stream);
         ok = true;
     } fz_catch(m_ctx) {
         qWarning() << "insertImage:" << fz_caught_message(m_ctx);
@@ -700,15 +969,84 @@ bool PdfDocument::deletePage(int pageNum) {
     return ok;
 }
 
+bool PdfDocument::insertBlankPage(int afterPageNum) {
+    if (!m_pdoc) return false;
+    snapshot();
+    bool ok = false;
+    fz_try(m_ctx) {
+        // Get the size of the page at afterPageNum to match it
+        fz_rect mediabox = fz_make_rect(0, 0, 595, 842); // A4 default
+        if (afterPageNum >= 0 && afterPageNum < pageCount()) {
+            pdf_page *pp = loadPdfPage(afterPageNum);
+            if (pp) {
+                fz_matrix ctm;
+                pdf_page_transform(m_ctx, pp, &mediabox, &ctm);
+                fz_drop_page(m_ctx, (fz_page*)pp);
+            }
+        }
+        pdf_obj *page = pdf_add_page(m_ctx, m_pdoc, mediabox, 0, nullptr, nullptr);
+        pdf_insert_page(m_ctx, m_pdoc, afterPageNum + 1, page);
+        pdf_drop_obj(m_ctx, page);
+        ok = true;
+    } fz_catch(m_ctx) {
+        qWarning() << "insertBlankPage:" << fz_caught_message(m_ctx);
+    }
+    return ok;
+}
+
 bool PdfDocument::duplicatePage(int pageNum) {
     if (!m_pdoc || pageNum >= pageCount()) return false;
     snapshot();
     bool ok = false;
+    fz_buffer *tmpBuf = nullptr;
+    fz_output *tmpOut = nullptr;
+    fz_document *tmpDoc = nullptr;
+    pdf_graft_map *gmap = nullptr;
     fz_try(m_ctx) {
-        pdf_graft_page(m_ctx, m_pdoc, pageNum + 1, m_pdoc, pageNum);
+        // Serialize the document to a temp buffer so we can graft from it.
+        // do_appearance=1 ensures every annotation AP stream is committed first.
+        fz_empty_store(m_ctx);
+        pdf_write_options wopts = pdf_default_write_options;
+        wopts.do_garbage    = 0;
+        wopts.do_compress   = 0;
+        wopts.do_appearance = 1;
+        tmpBuf = fz_new_buffer(m_ctx, 1 << 20);
+        tmpOut = fz_new_output_with_buffer(m_ctx, tmpBuf);
+        pdf_write_document(m_ctx, m_pdoc, tmpOut, &wopts);
+        fz_close_output(m_ctx, tmpOut);
+        fz_drop_output(m_ctx, tmpOut); tmpOut = nullptr;
+
+        fz_stream *tmpStream = fz_open_buffer(m_ctx, tmpBuf);
+        tmpDoc = fz_open_document_with_stream(m_ctx, "application/pdf", tmpStream);
+        fz_drop_stream(m_ctx, tmpStream);
+        pdf_document *tmpPdf = pdf_specifics(m_ctx, tmpDoc);
+
+        // pdf_graft_mapped_page intentionally omits /Annots from its copy_list.
+        // We use our own graft map so we can also graft the /Annots array through
+        // the same map — this ensures shared XObjects (e.g. AP streams, images) are
+        // only copied once and properly referenced by both the page and its annots.
+        gmap = pdf_new_graft_map(m_ctx, m_pdoc);
+        pdf_graft_mapped_page(m_ctx, gmap, pageNum + 1, tmpPdf, pageNum);
+
+        // Now copy /Annots from the source page to the newly inserted page.
+        pdf_obj *srcPageRef = pdf_lookup_page_obj(m_ctx, tmpPdf, pageNum);
+        pdf_obj *srcAnnots  = pdf_dict_get(m_ctx, srcPageRef, PDF_NAME(Annots));
+        if (srcAnnots && pdf_array_len(m_ctx, srcAnnots) > 0) {
+            pdf_obj *dstPageRef  = pdf_lookup_page_obj(m_ctx, m_pdoc, pageNum + 1);
+            pdf_obj *newAnnots   = pdf_graft_mapped_object(m_ctx, gmap, srcAnnots);
+            pdf_dict_put_drop(m_ctx, dstPageRef, PDF_NAME(Annots), newAnnots);
+        }
+
+        pdf_drop_graft_map(m_ctx, gmap); gmap = nullptr;
+        fz_drop_document(m_ctx, tmpDoc); tmpDoc = nullptr;
+        fz_drop_buffer(m_ctx, tmpBuf);  tmpBuf = nullptr;
         ok = true;
     } fz_catch(m_ctx) {
         qWarning() << "duplicatePage:" << fz_caught_message(m_ctx);
+        if (gmap)   pdf_drop_graft_map(m_ctx, gmap);
+        if (tmpOut) fz_drop_output(m_ctx, tmpOut);
+        if (tmpDoc) fz_drop_document(m_ctx, tmpDoc);
+        if (tmpBuf) fz_drop_buffer(m_ctx, tmpBuf);
     }
     return ok;
 }
@@ -734,6 +1072,179 @@ bool PdfDocument::movePage(int from, int to) {
 }
 
 // ──────────────────────────────────────────────
+// PDF Tools
+// ──────────────────────────────────────────────
+
+bool PdfDocument::mergeFrom(const QStringList &paths) {
+    if (!m_pdoc) return false;
+    snapshot();
+    bool anyOk = false;
+    for (const QString &path : paths) {
+        fz_document *srcDoc = nullptr;
+        fz_try(m_ctx) {
+            QByteArray utf8 = path.toUtf8();
+            srcDoc = fz_open_document(m_ctx, utf8.constData());
+            pdf_document *srcPdf = pdf_specifics(m_ctx, srcDoc);
+            if (srcPdf) {
+                int np = fz_count_pages(m_ctx, srcDoc);
+                int dst = pageCount();
+                for (int i = 0; i < np; ++i)
+                    pdf_graft_page(m_ctx, m_pdoc, dst + i, srcPdf, i);
+                anyOk = true;
+            }
+        } fz_catch(m_ctx) {
+            qWarning() << "mergeFrom:" << path << fz_caught_message(m_ctx);
+        }
+        if (srcDoc) fz_drop_document(m_ctx, srcDoc);
+    }
+    m_wordCache.clear();
+    return anyOk;
+}
+
+bool PdfDocument::extractPages(const QString &outPath, const QList<int> &pages1based) {
+    if (!m_pdoc || pages1based.isEmpty()) return false;
+    bool ok = false;
+    fz_document *newDoc = nullptr;
+    fz_output   *out    = nullptr;
+    fz_try(m_ctx) {
+        newDoc = (fz_document*)pdf_create_document(m_ctx);
+        pdf_document *newPdf = pdf_specifics(m_ctx, newDoc);
+        int dst = 0;
+        for (int p1 : pages1based) {
+            int p0 = p1 - 1;
+            if (p0 < 0 || p0 >= pageCount()) continue;
+            pdf_graft_page(m_ctx, newPdf, dst++, m_pdoc, p0);
+        }
+        QByteArray utf8 = outPath.toUtf8();
+        pdf_write_options wopts = pdf_default_write_options;
+        wopts.do_compress = 1;
+        wopts.do_garbage  = 2;
+        out = fz_new_output_with_path(m_ctx, utf8.constData(), 0);
+        pdf_write_document(m_ctx, newPdf, out, &wopts);
+        fz_close_output(m_ctx, out);
+        fz_drop_output(m_ctx, out); out = nullptr;
+        ok = true;
+    } fz_catch(m_ctx) {
+        qWarning() << "extractPages:" << fz_caught_message(m_ctx);
+        if (out) fz_drop_output(m_ctx, out);
+    }
+    if (newDoc) fz_drop_document(m_ctx, newDoc);
+    return ok;
+}
+
+bool PdfDocument::saveCopy(const QString &outPath, int imageQuality) {
+    if (!m_pdoc) return false;
+    bool ok = false;
+    fz_output *out = nullptr;
+    fz_try(m_ctx) {
+        pdf_write_options wopts = pdf_default_write_options;
+        wopts.do_compress        = 1;
+        wopts.do_compress_images = 1;
+        wopts.do_garbage         = 4;
+        wopts.do_clean           = 1;
+        // compression_effort: 0 = default, 1 = min, 100 = max
+        // invert the user's quality slider so "low quality" means more compression
+        wopts.compression_effort = 100 - imageQuality;
+        QByteArray utf8 = outPath.toUtf8();
+        out = fz_new_output_with_path(m_ctx, utf8.constData(), 0);
+        pdf_write_document(m_ctx, m_pdoc, out, &wopts);
+        fz_close_output(m_ctx, out);
+        fz_drop_output(m_ctx, out); out = nullptr;
+        ok = true;
+    } fz_catch(m_ctx) {
+        qWarning() << "saveCopy:" << fz_caught_message(m_ctx);
+        if (out) fz_drop_output(m_ctx, out);
+    }
+    return ok;
+}
+
+bool PdfDocument::addWatermarkText(const QString &text, int fontSize,
+                                    float opacity, int angleDeg) {
+    if (!m_pdoc || text.isEmpty()) return false;
+    snapshot();
+    bool ok = true;
+    QByteArray textUtf8 = text.toUtf8();
+    // Sanitise text for PDF literal string (escape parens/backslash)
+    QByteArray escaped;
+    for (unsigned char c : textUtf8) {
+        if (c == '(' || c == ')' || c == '\\') escaped += '\\';
+        escaped += c;
+    }
+    int n = pageCount();
+    for (int pn = 0; pn < n && ok; ++pn) {
+        pdf_page *pp = loadPdfPage(pn);
+        if (!pp) { ok = false; break; }
+        fz_try(m_ctx) {
+            fz_rect pr = fz_bound_page(m_ctx, (fz_page*)pp);
+            float pw = pr.x1 - pr.x0, ph = pr.y1 - pr.y0;
+            float cx = pw / 2.f, cy = ph / 2.f;
+
+            // Add ExtGState with alpha to page resources
+            pdf_obj *res   = pdf_page_resources(m_ctx, pp);
+            pdf_obj *extGs = pdf_dict_get(m_ctx, res, PDF_NAME(ExtGState));
+            if (!extGs || !pdf_is_dict(m_ctx, extGs)) {
+                extGs = pdf_new_dict(m_ctx, m_pdoc, 4);
+                pdf_dict_put(m_ctx, res, PDF_NAME(ExtGState), extGs);
+                pdf_drop_obj(m_ctx, extGs);
+                extGs = pdf_dict_get(m_ctx, res, PDF_NAME(ExtGState));
+            }
+            pdf_obj *gs = pdf_new_dict(m_ctx, m_pdoc, 4);
+            pdf_dict_put_name(m_ctx, gs, PDF_NAME(Type), "ExtGState");
+            pdf_dict_put_real(m_ctx, gs, PDF_NAME(ca), (double)opacity);
+            pdf_dict_put_real(m_ctx, gs, PDF_NAME(CA), (double)opacity);
+            pdf_dict_puts(m_ctx, extGs, "WMgs", gs);
+            pdf_drop_obj(m_ctx, gs);
+
+            // Build content stream snippet
+            double radians = angleDeg * M_PI / 180.0;
+            double cosA = cos(radians), sinA = sin(radians);
+            // Transformation matrix for rotation around page centre
+            // [cos -sin sin cos tx ty]
+            double tx = cx - cx*cosA + cy*sinA;
+            double ty = cy - cx*sinA - cy*cosA;
+            char snippet[1024];
+            snprintf(snippet, sizeof(snippet),
+                "q /WMgs gs "
+                "0.5 0.5 0.5 rg "
+                "BT "
+                "/Helv %d Tf "
+                "%.4f %.4f %.4f %.4f %.4f %.4f Tm "
+                "(%s) Tj "
+                "ET Q\n",
+                fontSize,
+                cosA, sinA, -sinA, cosA, tx, ty,
+                escaped.constData());
+
+            fz_buffer *frag = fz_new_buffer_from_copied_data(m_ctx,
+                reinterpret_cast<const unsigned char*>(snippet), strlen(snippet));
+            pdf_obj *stream = pdf_add_stream(m_ctx, m_pdoc, frag, nullptr, 0);
+            fz_drop_buffer(m_ctx, frag);
+
+            pdf_obj *contents = pdf_dict_get(m_ctx, pp->obj, PDF_NAME(Contents));
+            if (!contents) {
+                pdf_dict_put(m_ctx, pp->obj, PDF_NAME(Contents), stream);
+            } else if (pdf_is_array(m_ctx, contents)) {
+                pdf_array_push(m_ctx, contents, stream);
+            } else {
+                pdf_obj *arr = pdf_new_array(m_ctx, m_pdoc, 2);
+                pdf_array_push(m_ctx, arr, contents);
+                pdf_array_push(m_ctx, arr, stream);
+                pdf_dict_put(m_ctx, pp->obj, PDF_NAME(Contents), arr);
+                pdf_drop_obj(m_ctx, arr);
+            }
+            pdf_drop_obj(m_ctx, stream);
+        } fz_catch(m_ctx) {
+            qWarning() << "addWatermarkText page" << pn << fz_caught_message(m_ctx);
+            ok = false;
+        }
+        fz_drop_page(m_ctx, (fz_page*)pp);
+        invalidatePage(pn);
+    }
+    return ok;
+}
+
+
+// ──────────────────────────────────────────────
 // Form fields
 // ──────────────────────────────────────────────
 
@@ -755,6 +1266,9 @@ QVector<PdfDocument::FormField> PdfDocument::getFormFields() const {
                 f.type = (int)pdf_widget_type(m_ctx, w);
                 const char *val = pdf_field_value(m_ctx, wobj);
                 f.value = val ? QString::fromUtf8(val) : QString();
+                fz_rect r = pdf_annot_rect(m_ctx, w);
+                f.rect = QRectF(qMin(r.x0,r.x1), qMin(r.y0,r.y1),
+                                qAbs(r.x1-r.x0), qAbs(r.y1-r.y0));
                 fields.append(f);
             }
             fz_drop_page(m_ctx, (fz_page*)pp);

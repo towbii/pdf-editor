@@ -8,6 +8,7 @@
 #include <QRectF>
 #include <QTimer>
 #include <QPixmap>
+#include <QLineEdit>
 #include "PdfDocument.h"
 
 enum class Tool { Select, Highlight, Pen, Eraser, Text, Signature };
@@ -35,6 +36,9 @@ public:
     void setFontSize(float s)        { m_fontSize = s; }
     void setTextColor(QColor c)      { m_textColor = c; }
 
+    QColor penColor()       const { return m_penColor; }
+    QColor highlightColor() const { return m_hlColor; }
+
     void refreshAll();
     void refreshPage(int pageNum);
     void scrollToPage(int pageNum);
@@ -46,10 +50,13 @@ signals:
     void pageChanged(int pageNum);
     void selectionChanged(const QString &text);
     void zoomChanged(float zoom);
+    void pageDeleteRequested(int pageNum);
+    void pageDuplicateRequested(int pageNum);
+    void pageInsertRequested(int pageNum);
 
 private:
     PdfDocument *m_doc;
-    float m_zoom = 1.5f;
+    float m_zoom = 1.0f;
     Tool  m_tool = Tool::Select;
     QString m_sigPath;
     QColor m_hlColor  {255, 255, 0};
@@ -86,35 +93,76 @@ protected:
     void mousePressEvent(QMouseEvent *ev) override;
     void mouseMoveEvent(QMouseEvent *ev) override;
     void mouseReleaseEvent(QMouseEvent *ev) override;
+    void mouseDoubleClickEvent(QMouseEvent *ev) override;
+    void contextMenuEvent(QContextMenuEvent *ev) override;
+    bool eventFilter(QObject *obj, QEvent *ev) override;
 
 private:
     int       m_pageNum;
     PdfView  *m_view;
     QPixmap   m_pixmap;
-    QPixmap   m_renderedPixmap;    // last high-quality rendered pixmap
-    float     m_renderedZoom = 0.f; // zoom at which m_renderedPixmap was rendered
-    float     m_previewZoom = 1.0f;
+    QPixmap   m_renderedPixmap;
+    float     m_renderedZoom = 0.f;
+    float     m_previewZoom  = 1.0f;
 
-    // selection
+    // rubber-band text selection
     QPointF   m_selStart, m_selEnd;
     bool      m_selecting = false;
-    QVector<QRectF> m_selRects; // screen rects
+    QVector<QRectF> m_selRects;
+
+    // FreeText annotation selection / drag
+    QRectF    m_selAnnotRect;     // current (preview) rect while dragging, PDF coords
+    QRectF    m_selAnnotOrigRect; // rect at the start of the drag, for the actual move call
+    QPointF   m_annotDragStart;   // PDF coords where drag began
+    bool      m_movingAnnot = false;
+    QString   m_selAnnotText;     // FreeText content for drag preview
 
     // highlight
     QPointF   m_hlStart;
     bool      m_hlDragging = false;
 
+    // signature drag-to-size
+    QPoint    m_sigOrigin;
+    QPoint    m_sigCurrent;
+    bool      m_sigSizing = false;
+
     // pen
-    QVector<QPointF> m_penStroke; // in PDF coords
+    QVector<QPointF> m_penStroke;
     bool m_penDown = false;
 
-    // eraser state
+    // eraser
     bool m_erasing = false;
+
+    // signature hover position (for floating preview before drag)
+    QPoint m_sigHoverPos;
+
+    // inline text editor overlay
+    QLineEdit *m_textEditor = nullptr;
+
+    // form field overlays (created when PDF has form fields)
+    QVector<QWidget*> m_formOverlays;
+
+    // resize mode (right-click on annotation)
+    bool    m_resizeMode     = false;
+    QRectF  m_resizeRect;       // current resize rect in PDF coords
+    QRectF  m_resizeOrigRect;   // original rect at resize start, PDF coords
+    QPointF m_resizeAnnotHit;   // PDF point used to identify which annotation
+    int     m_resizeHandle    = -1; // 0=TL 1=T 2=TR 3=L 4=R 5=BL 6=B 7=BR
+    bool    m_resizeDragging  = false;
+    QPointF m_resizeDragStart; // PDF coords at handle drag start
 
     // coordinate conversion
     QPointF toPdf(QPoint widgetPt) const;
     QRectF  toScreen(float x0, float y0, float x1, float y1) const;
 
     void placeText(QPoint pos);
+    void commitTextEditor(bool cancel = false);
     void placeSignature(QPoint pos);
+    void placeSignatureRect(QPoint origin, QPoint end);
+    void createFormOverlays();
+    void repositionFormOverlays();
+    void enterResizeMode(QPointF pdfHit, QRectF pdfRect);
+    void exitResizeMode(bool commit);
+    int  handleAt(QPoint widgetPt) const;
+    QRectF handleRect(int handle) const; // in widget coords
 };

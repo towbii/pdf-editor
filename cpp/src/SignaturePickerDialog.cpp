@@ -15,8 +15,8 @@
 #include <QPainter>
 
 SignaturePickerDialog::SignaturePickerDialog(QWidget *parent) : QDialog(parent) {
-    setWindowTitle(tr("Unterschrift auswählen"));
-    setMinimumSize(520, 380);
+    setWindowTitle(tr("Select Signature"));
+    setMinimumSize(640, 700);
 
     m_sigsDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
                 + "/signatures";
@@ -26,7 +26,7 @@ SignaturePickerDialog::SignaturePickerDialog(QWidget *parent) : QDialog(parent) 
     QString legacySig = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
                         + "/saved_signature.png";
     if (QFile::exists(legacySig)) {
-        QString dest = m_sigsDir + "/Unterschrift_1.png";
+        QString dest = m_sigsDir + "/Signature_1.png";
         if (!QFile::exists(dest)) QFile::rename(legacySig, dest);
         else QFile::remove(legacySig);
     }
@@ -35,16 +35,16 @@ SignaturePickerDialog::SignaturePickerDialog(QWidget *parent) : QDialog(parent) 
     lay->setSpacing(12);
     lay->setContentsMargins(16, 16, 16, 16);
 
-    lay->addWidget(new QLabel(tr("Gespeicherte Unterschriften:")));
+    lay->addWidget(new QLabel(tr("Saved Signatures:")));
 
-    // List with thumbnails
+    // List with large thumbnails so the full signature is visible
     m_list = new QListWidget;
     m_list->setViewMode(QListWidget::IconMode);
-    m_list->setIconSize(QSize(140, 60));
-    m_list->setSpacing(8);
+    m_list->setIconSize(QSize(220, 90));
+    m_list->setSpacing(10);
     m_list->setResizeMode(QListWidget::Adjust);
     m_list->setMovement(QListWidget::Static);
-    m_list->setFixedHeight(200);
+    m_list->setFixedHeight(260);
     m_list->setStyleSheet(
         "QListWidget { background: #1E1E1E; border: 1px solid #333; border-radius: 8px; outline: none; }"
         "QListWidget::item { background: #2D2D2D; border-radius: 6px; margin: 4px; padding: 4px; }"
@@ -52,22 +52,22 @@ SignaturePickerDialog::SignaturePickerDialog(QWidget *parent) : QDialog(parent) 
         "QListWidget::item:hover { background: #3A3A3A; }");
     lay->addWidget(m_list);
 
-    // Preview
-    m_preview = new QLabel(tr("Keine Auswahl"));
+    // Preview — tall enough to show a full signature comfortably
+    m_preview = new QLabel(tr("No selection"));
     m_preview->setAlignment(Qt::AlignCenter);
-    m_preview->setMinimumHeight(80);
+    m_preview->setMinimumHeight(220);
     m_preview->setStyleSheet(
         "border: 1px dashed #444; border-radius: 8px; background: #252526;");
-    lay->addWidget(m_preview);
+    lay->addWidget(m_preview, 1);
 
     // Buttons row
     auto *btnRow = new QHBoxLayout;
-    auto *newBtn = new QPushButton(tr("+ Neue Unterschrift"));
+    auto *newBtn = new QPushButton(tr("+ New Signature"));
     newBtn->setStyleSheet(
         "QPushButton { background: #0078D4; color: white; border: none;"
         "  border-radius: 8px; padding: 7px 16px; font-weight: 600; }"
         "QPushButton:hover { background: #1088E4; }");
-    auto *delBtn = new QPushButton(tr("Löschen"));
+    auto *delBtn = new QPushButton(tr("Delete"));
     delBtn->setStyleSheet(
         "QPushButton { background: #CC3333; color: white; border: none;"
         "  border-radius: 8px; padding: 7px 16px; }"
@@ -79,19 +79,23 @@ SignaturePickerDialog::SignaturePickerDialog(QWidget *parent) : QDialog(parent) 
 
     // Dialog buttons
     auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    bb->button(QDialogButtonBox::Ok)->setText(tr("Verwenden"));
-    bb->button(QDialogButtonBox::Cancel)->setText(tr("Abbrechen"));
+    bb->button(QDialogButtonBox::Ok)->setText(tr("Use"));
+    bb->button(QDialogButtonBox::Cancel)->setText(tr("Cancel"));
     lay->addWidget(bb);
 
     connect(m_list, &QListWidget::currentItemChanged, this,
             [this](QListWidgetItem *cur, QListWidgetItem *) {
-        if (!cur) { m_preview->setText(tr("Keine Auswahl")); m_selected.clear(); return; }
+        if (!cur) { m_preview->setText(tr("No selection")); m_selected.clear(); return; }
         m_selected = cur->data(Qt::UserRole).toString();
         QPixmap px(m_selected);
-        if (!px.isNull())
-            m_preview->setPixmap(px.scaledToWidth(360, Qt::SmoothTransformation));
-        else
-            m_preview->setText(tr("Vorschau nicht verfügbar"));
+        if (!px.isNull()) {
+            // Fit inside preview area keeping aspect ratio
+            QSize maxSz(m_preview->width() - 16, m_preview->minimumHeight() - 16);
+            if (maxSz.width() < 200) maxSz.setWidth(600);
+            m_preview->setPixmap(px.scaled(maxSz, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        } else {
+            m_preview->setText(tr("Preview not available"));
+        }
     });
 
     connect(m_list, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item) {
@@ -104,8 +108,8 @@ SignaturePickerDialog::SignaturePickerDialog(QWidget *parent) : QDialog(parent) 
 
     connect(bb, &QDialogButtonBox::accepted, this, [this]() {
         if (m_selected.isEmpty()) {
-            QMessageBox::information(this, tr("Keine Auswahl"),
-                tr("Bitte wählen Sie eine Unterschrift aus."));
+            QMessageBox::information(this, tr("No Selection"),
+                tr("Please select a signature."));
             return;
         }
         accept();
@@ -124,17 +128,19 @@ void SignaturePickerDialog::loadSignatures() {
         QPixmap px(path);
         QIcon icon;
         if (!px.isNull()) {
-            QPixmap thumb(140, 60);
+            // Large thumbnail so the signature is fully visible
+            QPixmap thumb(220, 90);
             thumb.fill(Qt::white);
             QPainter p(&thumb);
-            QPixmap scaled = px.scaled(QSize(134, 54), Qt::KeepAspectRatio, Qt::SmoothTransformation);
-            p.drawPixmap((thumb.width()-scaled.width())/2, (thumb.height()-scaled.height())/2, scaled);
+            QPixmap scaled = px.scaled(QSize(210, 82), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            p.drawPixmap((thumb.width()-scaled.width())/2,
+                         (thumb.height()-scaled.height())/2, scaled);
             icon = QIcon(thumb);
         }
         QString label = QFileInfo(f).baseName();
         auto *item = new QListWidgetItem(icon, label);
         item->setData(Qt::UserRole, path);
-        item->setSizeHint(QSize(156, 90));
+        item->setSizeHint(QSize(240, 130));
         m_list->addItem(item);
     }
 }
@@ -145,7 +151,7 @@ void SignaturePickerDialog::addNewSignature() {
 
     // Generate a unique name
     QString ts = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
-    QString dest = m_sigsDir + "/Unterschrift_" + ts + ".png";
+    QString dest = m_sigsDir + "/Signature_" + ts + ".png";
     QFile::copy(dlg.savedPath(), dest);
 
     loadSignatures();
@@ -162,12 +168,12 @@ void SignaturePickerDialog::deleteSelected() {
     auto *item = m_list->currentItem();
     if (!item) return;
     QString path = item->data(Qt::UserRole).toString();
-    auto res = QMessageBox::question(this, tr("Löschen"),
-        tr("Diese Unterschrift wirklich löschen?"),
+    auto res = QMessageBox::question(this, tr("Delete"),
+        tr("Really delete this signature?"),
         QMessageBox::Yes | QMessageBox::No);
     if (res != QMessageBox::Yes) return;
     QFile::remove(path);
     m_selected.clear();
-    m_preview->setText(tr("Keine Auswahl"));
+    m_preview->setText(tr("No selection"));
     loadSignatures();
 }

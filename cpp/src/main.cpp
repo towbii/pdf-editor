@@ -86,7 +86,7 @@ protected:
         p.setPen(QColor("#666666"));
         p.setFont(QFont("Segoe UI", 11));
         p.drawText(QRect(0, 150, width(), 26), Qt::AlignCenter,
-                   "Professioneller PDF-Editor");
+                   "Professional PDF Editor");
 
         // Loading bar track
         QRect barBg(60, 206, width()-120, 5);
@@ -112,13 +112,13 @@ protected:
         p.drawText(QRect(0, 222, width(), 18), Qt::AlignCenter, m_msg);
 
         // Version
-        p.drawText(QRect(0, 252, width(), 18), Qt::AlignCenter, "Version 1.0.0");
+        p.drawText(QRect(0, 252, width(), 18), Qt::AlignCenter, "Version 1.4.1");
     }
 
 private:
     QTimer  m_timer;
     float   m_shimmer = 0.f;
-    QString m_msg = "Starte…";
+    QString m_msg = "Starting…";
 };
 
 #include "main.moc"
@@ -131,41 +131,136 @@ int main(int argc, char *argv[]) {
     app.setApplicationName("PDFEditor");
     app.setOrganizationName("PDFEditor");
     app.setApplicationDisplayName("PDF Editor");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion("1.4.1");
 
-    // Load language from saved settings
+    // Load language translator — default is English ("en").
+    // Try the embedded Qt resource first (always available), fall back to
+    // a .qm file next to the executable for custom/third-party translations.
     {
         QSettings s("PDFEditor", "PDFEditor");
-        QString lang = s.value("ui/language", "de").toString();
-        if (lang != "de") {
+        QString lang = s.value("ui/language", "en").toString();
+        // Only install a translator for languages other than the default English source
+        if (lang != "en") {
             auto *translator = new QTranslator(&app);
-            QString qmPath = QCoreApplication::applicationDirPath() + "/" + lang + ".qm";
-            if (translator->load(qmPath)) {
+            bool loaded = translator->load(":/i18n/" + lang);
+            if (!loaded)
+                loaded = translator->load(QCoreApplication::applicationDirPath()
+                                          + "/" + lang + ".qm");
+            if (loaded)
                 app.installTranslator(translator);
-            }
         }
     }
 
-    // App icon
+    // App icon — dark navy bg / blue-gradient header / orange edit accent
     {
-        QPixmap iconPm(256, 256);
-        iconPm.fill(Qt::transparent);
-        QPainter ip(&iconPm);
-        ip.setRenderHint(QPainter::Antialiasing);
-        ip.setBrush(QColor(220, 53, 69));
-        ip.setPen(Qt::NoPen);
-        ip.drawRoundedRect(iconPm.rect(), 40, 40);
-        ip.setBrush(Qt::white);
-        ip.drawRoundedRect(QRect(46, 26, 164, 204), 8, 8);
-        ip.setBrush(QColor(220, 53, 69));
-        int bandH = 72, bandY = 26 + 204 - bandH;
-        ip.drawRoundedRect(QRect(46, bandY, 164, bandH), 8, 8);
-        ip.drawRect(QRect(46, bandY, 164, 12));
-        ip.setPen(Qt::white);
-        ip.setFont(QFont("Segoe UI", 36, QFont::Bold));
-        ip.drawText(QRect(46, bandY, 164, bandH), Qt::AlignCenter, "PDF");
-        ip.end();
-        app.setWindowIcon(QIcon(iconPm));
+        // Build at 256×256; also produce a 64×64 variant for crisp taskbar rendering
+        auto buildIcon = [](int sz) -> QPixmap {
+            QPixmap pm(sz, sz);
+            pm.fill(Qt::transparent);
+            QPainter p(&pm);
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setRenderHint(QPainter::TextAntialiasing);
+            p.setPen(Qt::NoPen);
+
+            const qreal s = sz / 256.0;  // scale factor from 256-unit design
+
+            auto sc = [&](qreal v) { return int(v * s + 0.5); };
+            auto sr = [&](qreal x, qreal y, qreal w, qreal h) {
+                return QRectF(x * s, y * s, w * s, h * s);
+            };
+
+            // 1) Background: dark navy gradient
+            {
+                QLinearGradient g(0, 0, 0, sz);
+                g.setColorAt(0, QColor(0x14, 0x1f, 0x38));
+                g.setColorAt(1, QColor(0x07, 0x0c, 0x1a));
+                p.setBrush(g);
+                p.drawRoundedRect(0, 0, sz, sz, 46 * s, 46 * s);
+            }
+
+            // 2) Document drop shadow
+            p.setBrush(QColor(0, 0, 0, 64));
+            p.drawRoundedRect(sr(50, 33, 158, 196), 13 * s, 13 * s);
+
+            // 3) Document: clean white body
+            p.setBrush(QColor(0xf2, 0xf6, 0xfb));
+            p.drawRoundedRect(sr(46, 29, 158, 196), 13 * s, 13 * s);
+
+            // 4) Blue-gradient header (top 38% of doc height)
+            {
+                QLinearGradient g(46 * s, 29 * s, (46 + 158) * s, (29 + 80) * s);
+                g.setColorAt(0, QColor(0x1a, 0x8f, 0xff));  // electric blue
+                g.setColorAt(1, QColor(0x50, 0x3e, 0xf5));  // deep indigo
+                p.setBrush(g);
+                p.setClipRect(QRectF(46 * s, 29 * s, 158 * s, 80 * s));
+                p.drawRoundedRect(sr(46, 29, 158, 196), 13 * s, 13 * s);
+                p.setClipping(false);
+            }
+
+            // 5) Folded corner — top-right triangle
+            {
+                const qreal fz = 26 * s;
+                QPointF a((46 + 158) * s - fz, 29 * s);
+                QPointF b((46 + 158) * s,       29 * s);
+                QPointF c((46 + 158) * s,       29 * s + fz);
+                p.setBrush(QColor(0xa8, 0xc4, 0xe0));
+                p.drawPolygon(QPolygonF({a, b, c}));
+            }
+
+            // 6) "PDF" text centered in header
+            {
+                QFont f("Segoe UI", sc(27), QFont::Bold);
+                p.setFont(f);
+                p.setPen(QColor(255, 255, 255, 245));
+                p.drawText(QRectF(46 * s, 29 * s, 158 * s, 80 * s),
+                           Qt::AlignCenter, "PDF");
+                p.setPen(Qt::NoPen);
+            }
+
+            // 7) Simulated text lines in document body
+            {
+                const int lx = 63, baseY = 29 + 80 + 13;
+                const int lws[] = {116, 82, 110, 74};
+                for (int i = 0; i < 4; i++) {
+                    p.setBrush(QColor(0xb0, 0xc8, 0xdf, 210));
+                    p.drawRoundedRect(sr(lx, baseY + i * 22, lws[i], 8), 4 * s, 4 * s);
+                }
+            }
+
+            // 8) Orange edit-accent band at bottom of document
+            {
+                QLinearGradient g(46 * s, (29 + 196 - 30) * s,
+                                  (46 + 158) * s, (29 + 196) * s);
+                g.setColorAt(0, QColor(0xff, 0xa0, 0x2e));  // amber
+                g.setColorAt(1, QColor(0xf9, 0x6d, 0x10));  // deep orange
+                p.setBrush(g);
+                p.setClipRect(QRectF(46 * s, (29 + 196 - 30) * s, 158 * s, 30 * s));
+                p.drawRoundedRect(sr(46, 29, 158, 196), 13 * s, 13 * s);
+                p.setClipping(false);
+            }
+
+            // 9) Small white edit-cursor spark inside the orange band
+            {
+                p.setBrush(QColor(255, 255, 255, 200));
+                const int mx = 46 + 79, my = 29 + 196 - 15;  // center of band
+                // Vertical cursor bar
+                p.drawRoundedRect(sr(mx - 2, my - 7, 4, 14), 2 * s, 2 * s);
+                // Horizontal serif top
+                p.drawRoundedRect(sr(mx - 6, my - 7, 12, 3), 1 * s, 1 * s);
+                // Horizontal serif bottom
+                p.drawRoundedRect(sr(mx - 6, my + 4, 12, 3), 1 * s, 1 * s);
+            }
+
+            p.end();
+            return pm;
+        };
+
+        QIcon icon;
+        icon.addPixmap(buildIcon(256));
+        icon.addPixmap(buildIcon(64));
+        icon.addPixmap(buildIcon(32));
+        icon.addPixmap(buildIcon(16));
+        app.setWindowIcon(icon);
     }
 
     // Show animated splash FIRST – before any heavy work
@@ -175,7 +270,7 @@ int main(int argc, char *argv[]) {
     app.processEvents();
 
     // Create main window (stylesheet applied inside buildToolbar/etc. is skipped until show)
-    splash->setMsg("Initialisiere…");
+    splash->setMsg("Initializing…");
     app.processEvents();
     MainWindow win;
 
@@ -186,7 +281,7 @@ int main(int argc, char *argv[]) {
     QSettings s("PDFEditor", "PDFEditor");
     if (s.contains("geometry")) win.restoreGeometry(s.value("geometry").toByteArray());
 
-    splash->setMsg("Bereit.");
+    splash->setMsg("Ready.");
     app.processEvents();
 
     win.show();

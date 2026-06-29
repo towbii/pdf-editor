@@ -32,6 +32,12 @@ __pycache__/
 venv/
 .env
 
+# Claude Code memory (private)
+.claude/
+
+# Release zips
+*.zip
+
 # Temp
 *.tmp
 *.bak

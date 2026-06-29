@@ -505,6 +505,33 @@ or: Windows Settings → Default Apps → .pdf → PDF Editor</translation>
         <source>Text:</source>
         <translation>Text:</translation>
     </message>
+    <message>
+        <source>Seite duplizieren</source>
+        <translation>Duplicate Page</translation>
+    </message>
+    <message>
+        <source>Neue Seite einfügen</source>
+        <translation>Insert Blank Page</translation>
+    </message>
+    <message>
+        <source>Seite löschen</source>
+        <translation>Delete Page</translation>
+    </message>
+</context>
+<context>
+    <name>ThumbnailItem</name>
+    <message>
+        <source>Seite duplizieren</source>
+        <translation>Duplicate Page</translation>
+    </message>
+    <message>
+        <source>Neue Seite einfügen</source>
+        <translation>Insert Blank Page</translation>
+    </message>
+    <message>
+        <source>Seite löschen</source>
+        <translation>Delete Page</translation>
+    </message>
 </context>
 <context>
     <name>SignatureDialog</name>
@@ -618,6 +645,361 @@ or: Windows Settings → Default Apps → .pdf → PDF Editor</translation>
     <message>
         <source>Vorschau nicht verfügbar</source>
         <translation>Preview not available</translation>
+    </message>
+    <message>
+        <source>PDFs zusammenführen …</source>
+        <translation>Merge PDFs …</translation>
+    </message>
+    <message>
+        <source>Seiten aus anderen PDFs einfügen</source>
+        <translation>Insert pages from other PDFs</translation>
+    </message>
+    <message>
+        <source>Seiten extrahieren …</source>
+        <translation>Extract Pages …</translation>
+    </message>
+    <message>
+        <source>Seitenbereich als neue Datei speichern</source>
+        <translation>Save page range as a new file</translation>
+    </message>
+    <message>
+        <source>PDF komprimieren …</source>
+        <translation>Compress PDF …</translation>
+    </message>
+    <message>
+        <source>Komprimierte Kopie speichern</source>
+        <translation>Save a compressed copy</translation>
+    </message>
+    <message>
+        <source>Wasserzeichen hinzufügen …</source>
+        <translation>Add Watermark …</translation>
+    </message>
+    <message>
+        <source>Textstempel auf alle Seiten</source>
+        <translation>Stamp text on all pages</translation>
+    </message>
+    <message>
+        <source>Passwortschutz …</source>
+        <translation>Password Protection …</translation>
+    </message>
+    <message>
+        <source>Dokument verschlüsseln</source>
+        <translation>Encrypt document</translation>
+    </message>
+    <message>
+        <source>&amp;Werkzeuge</source>
+        <translation>&amp;Tools</translation>
+    </message>
+    <message>
+        <source>Hinweis</source>
+        <translation>Info</translation>
+    </message>
+    <message>
+        <source>Bitte öffnen Sie zuerst ein PDF, in das die Seiten eingefügt werden.</source>
+        <translation>Please open a PDF first to insert pages into.</translation>
+    </message>
+    <message>
+        <source>%1 Datei(en) eingefügt.</source>
+        <translation>%1 file(s) merged.</translation>
+    </message>
+    <message>
+        <source>%1 Seiten gespeichert in %2</source>
+        <translation>%1 pages saved to %2</translation>
+    </message>
+    <message>
+        <source>Komprimiert gespeichert: %1</source>
+        <translation>Compressed copy saved: %1</translation>
+    </message>
+    <message>
+        <source>Wasserzeichen hinzugefügt.</source>
+        <translation>Watermark applied.</translation>
+    </message>
+    <message>
+        <source>Passwort wird beim nächsten Speichern entfernt.</source>
+        <translation>Password will be removed on next save.</translation>
+    </message>
+    <message>
+        <source>Passwort wird beim nächsten Speichern gesetzt.</source>
+        <translation>Password will be applied on next save.</translation>
+    </message>
+    <message>
+        <source>PDF hier ablegen</source>
+        <translation>Drop PDF here</translation>
+    </message>
+    <message>
+        <source>— oder —</source>
+        <translation>— or —</translation>
+    </message>
+    <message>
+        <source>Datei öffnen …</source>
+        <translation>Open file …</translation>
+    </message>
+    <message>
+        <source>ZULETZT GEÖFFNET</source>
+        <translation>RECENTLY OPENED</translation>
+    </message>
+    <message>
+        <source>Bearbeiten</source>
+        <translation>Edit</translation>
+    </message>
+    <message>
+        <source>PDF öffnen</source>
+        <translation>Open PDF</translation>
+    </message>
+    <message>
+        <source>Datei laden oder per Drag &amp; Drop</source>
+        <translation>Load file or drag &amp; drop</translation>
+    </message>
+    <message>
+        <source>Zeichnen und einfügen</source>
+        <translation>Draw and insert</translation>
+    </message>
+    <message>
+        <source>Felder automatisch erkannt</source>
+        <translation>Fields auto-detected</translation>
+    </message>
+    <message>
+        <source>Seiten</source>
+        <translation>Pages</translation>
+    </message>
+    <message>
+        <source>Mehrere Dateien verbinden</source>
+        <translation>Join multiple files</translation>
+    </message>
+    <message>
+        <source>Bereich als neue Datei speichern</source>
+        <translation>Save range as new file</translation>
+    </message>
+    <message>
+        <source>Aktuelle Seite kopieren</source>
+        <translation>Copy current page</translation>
+    </message>
+    <message>
+        <source>Leere Seite hinzufügen</source>
+        <translation>Add blank page</translation>
+    </message>
+    <message>
+        <source>Sicherheit &amp; Optimierung</source>
+        <translation>Security &amp; Optimization</translation>
+    </message>
+    <message>
+        <source>Dateigröße reduzieren</source>
+        <translation>Reduce file size</translation>
+    </message>
+    <message>
+        <source>Text auf alle Seiten stempeln</source>
+        <translation>Stamp text on all pages</translation>
+    </message>
+</context>
+<context>
+    <name>MergeDialog</name>
+    <message>
+        <source>PDFs zusammenführen</source>
+        <translation>Merge PDFs</translation>
+    </message>
+    <message>
+        <source>Wählen Sie eine oder mehrere PDF-Dateien aus.
+Die Seiten werden am Ende des geöffneten Dokuments eingefügt.</source>
+        <translation>Select one or more PDF files.
+Pages will be appended to the end of the currently open document.</translation>
+    </message>
+    <message>
+        <source>+ PDF hinzufügen</source>
+        <translation>+ Add PDF</translation>
+    </message>
+    <message>
+        <source>Entfernen</source>
+        <translation>Remove</translation>
+    </message>
+    <message>
+        <source>Zusammenführen</source>
+        <translation>Merge</translation>
+    </message>
+    <message>
+        <source>Abbrechen</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Keine Dateien</source>
+        <translation>No Files</translation>
+    </message>
+    <message>
+        <source>Bitte fügen Sie mindestens eine PDF-Datei hinzu.</source>
+        <translation>Please add at least one PDF file.</translation>
+    </message>
+    <message>
+        <source>PDF-Dateien auswählen</source>
+        <translation>Select PDF Files</translation>
+    </message>
+    <message>
+        <source>PDF-Dateien (*.pdf);;Alle Dateien (*)</source>
+        <translation>PDF Files (*.pdf);;All Files (*)</translation>
+    </message>
+</context>
+<context>
+    <name>SplitDialog</name>
+    <message>
+        <source>Seiten extrahieren</source>
+        <translation>Extract Pages</translation>
+    </message>
+    <message>
+        <source>Seitenbereich angeben (z.B. 1, 3-5, 7) — maximale Seite: %1</source>
+        <translation>Enter page range (e.g. 1, 3-5, 7) — max page: %1</translation>
+    </message>
+    <message>
+        <source>Seiten:</source>
+        <translation>Pages:</translation>
+    </message>
+    <message>
+        <source>z.B.  1-3, 5, 7-9</source>
+        <translation>e.g.  1-3, 5, 7-9</translation>
+    </message>
+    <message>
+        <source>Speichern unter:</source>
+        <translation>Save as:</translation>
+    </message>
+    <message>
+        <source>Ausgabedatei …</source>
+        <translation>Output file …</translation>
+    </message>
+    <message>
+        <source>Ausgabedatei wählen</source>
+        <translation>Choose Output File</translation>
+    </message>
+    <message>
+        <source>PDF-Dateien (*.pdf)</source>
+        <translation>PDF Files (*.pdf)</translation>
+    </message>
+    <message>
+        <source>Extrahieren</source>
+        <translation>Extract</translation>
+    </message>
+    <message>
+        <source>Kein Bereich</source>
+        <translation>No Range</translation>
+    </message>
+    <message>
+        <source>Bitte einen Seitenbereich eingeben.</source>
+        <translation>Please enter a page range.</translation>
+    </message>
+    <message>
+        <source>Kein Pfad</source>
+        <translation>No Path</translation>
+    </message>
+    <message>
+        <source>Bitte eine Ausgabedatei wählen.</source>
+        <translation>Please choose an output file.</translation>
+    </message>
+</context>
+<context>
+    <name>CompressDialog</name>
+    <message>
+        <source>PDF komprimieren</source>
+        <translation>Compress PDF</translation>
+    </message>
+    <message>
+        <source>Speichert eine komprimierte Kopie der PDF an einem neuen Pfad.
+Niedrigere Bildqualität = kleinere Datei.</source>
+        <translation>Saves a compressed copy to a new path.
+Lower image quality = smaller file.</translation>
+    </message>
+    <message>
+        <source>Bildqualität:</source>
+        <translation>Image Quality:</translation>
+    </message>
+    <message>
+        <source>Niedrig</source>
+        <translation>Low</translation>
+    </message>
+    <message>
+        <source>Hoch</source>
+        <translation>High</translation>
+    </message>
+    <message>
+        <source>Komprimieren</source>
+        <translation>Compress</translation>
+    </message>
+</context>
+<context>
+    <name>WatermarkDialog</name>
+    <message>
+        <source>Wasserzeichen hinzufügen</source>
+        <translation>Add Watermark</translation>
+    </message>
+    <message>
+        <source>Text:</source>
+        <translation>Text:</translation>
+    </message>
+    <message>
+        <source>z.B.  VERTRAULICH</source>
+        <translation>e.g.  CONFIDENTIAL</translation>
+    </message>
+    <message>
+        <source>Schriftgröße:</source>
+        <translation>Font Size:</translation>
+    </message>
+    <message>
+        <source>Deckkraft:</source>
+        <translation>Opacity:</translation>
+    </message>
+    <message>
+        <source>Winkel:</source>
+        <translation>Angle:</translation>
+    </message>
+    <message>
+        <source>Anwenden</source>
+        <translation>Apply</translation>
+    </message>
+    <message>
+        <source>Kein Text</source>
+        <translation>No Text</translation>
+    </message>
+    <message>
+        <source>Bitte einen Wasserzeichentext eingeben.</source>
+        <translation>Please enter watermark text.</translation>
+    </message>
+</context>
+<context>
+    <name>PasswordDialog</name>
+    <message>
+        <source>Passwortschutz</source>
+        <translation>Password Protection</translation>
+    </message>
+    <message>
+        <source>Legt beim nächsten Speichern einen Passwortschutz fest.</source>
+        <translation>Applies password protection on the next save.</translation>
+    </message>
+    <message>
+        <source>Passwort entfernen (ohne Passwort speichern)</source>
+        <translation>Remove password (save without password)</translation>
+    </message>
+    <message>
+        <source>Passwort:</source>
+        <translation>Password:</translation>
+    </message>
+    <message>
+        <source>Benutzerpasswort zum Öffnen</source>
+        <translation>User password to open</translation>
+    </message>
+    <message>
+        <source>Besitzerpasswort:</source>
+        <translation>Owner Password:</translation>
+    </message>
+    <message>
+        <source>Leer lassen = Benutzerpasswort verwenden</source>
+        <translation>Leave empty = use user password</translation>
+    </message>
+    <message>
+        <source>Übernehmen</source>
+        <translation>Apply</translation>
+    </message>
+    <message>
+        <source>Kein Passwort</source>
+        <translation>No Password</translation>
+    </message>
+    <message>
+        <source>Bitte ein Passwort eingeben oder &apos;Entfernen&apos; wählen.</source>
+        <translation>Please enter a password or choose &apos;Remove&apos;.</translation>
     </message>
 </context>
 </TS>

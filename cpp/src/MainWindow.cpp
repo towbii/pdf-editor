@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "SignatureDialog.h"
 #include "SignaturePickerDialog.h"
+#include "PdfToolDialogs.h"
 #include "Theme.h"
 #include <QApplication>
 #include <QMenuBar>
@@ -125,106 +126,131 @@ void MainWindow::rebuildRecentList() {
         m_recentList->addItem(item);
     }
     if (m_recentList->count() == 0) {
-        auto *item = new QListWidgetItem("  Keine zuletzt geöffneten Dateien");
+        auto *item = new QListWidgetItem("  No recently opened files");
         item->setFlags(Qt::NoItemFlags);
         item->setForeground(QColor("#666666"));
         m_recentList->addItem(item);
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Welcome widget
-// ─────────────────────────────────────────────────────────────
-
-QWidget *MainWindow::buildWelcomeWidget() {
+QWidget *MainWindow::buildWelcomeWidget()
+{
     auto *w = new QWidget;
     w->setObjectName("welcomeWidget");
-    auto *outer = new QVBoxLayout(w);
-    outer->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
-    outer->setContentsMargins(0, 0, 0, 0);
 
-    // ── Center card ──────────────────────────────────────
-    auto *card = new QFrame;
+    auto *root = new QVBoxLayout(w);
+    root->setContentsMargins(0, 0, 0, 0);
+    root->setSpacing(0);
+
+    // ── Thin top bar with branding ──
+    auto *header = new QWidget;
+    header->setObjectName("welcomeHeader");
+    header->setFixedHeight(52);
+    {
+        auto *hl = new QHBoxLayout(header);
+        hl->setContentsMargins(28, 0, 28, 0);
+
+        auto *logo = new QLabel;
+        logo->setText(
+            "<span style='font-size:18px; font-weight:700; letter-spacing:-0.5px;'>PDF</span>"
+            "<span style='font-size:18px; font-weight:300; color:#CC3232;'> Editor</span>");
+        hl->addWidget(logo);
+        hl->addStretch();
+
+        auto *ver = new QLabel("v1.0");
+        ver->setObjectName("verLabel");
+        hl->addWidget(ver);
+    }
+    root->addWidget(header);
+
+    // thin rule below header
+    auto *rule = new QFrame;
+    rule->setObjectName("welcomeRule");
+    rule->setFixedHeight(1);
+    root->addWidget(rule);
+
+    // ── Body: centered card ──
+    auto *body = new QWidget;
+    body->setObjectName("welcomeBody");
+    auto *bodyVl = new QVBoxLayout(body);
+    bodyVl->setContentsMargins(24, 0, 24, 32);
+    bodyVl->setSpacing(0);
+
+    bodyVl->addStretch(2);
+
+    // Card
+    auto *card = new QWidget;
     card->setObjectName("welcomeCard");
-    card->setFixedWidth(480);
-    card->setStyleSheet(
-        "QFrame#welcomeCard {"
-        "  background: #252526;"
-        "  border-radius: 16px;"
-        "  border: 1px solid #333333;"
-        "}");
+    card->setFixedWidth(520);
+    auto *cardVl = new QVBoxLayout(card);
+    cardVl->setContentsMargins(0, 0, 0, 0);
+    cardVl->setSpacing(0);
 
-    auto *vl = new QVBoxLayout(card);
-    vl->setSpacing(0);
-    vl->setContentsMargins(40, 40, 40, 40);
+    // ── Drop zone ──
+    auto *drop = new QFrame;
+    drop->setObjectName("dropZone");
+    drop->setFixedHeight(190);
+    drop->setCursor(Qt::PointingHandCursor);
+    {
+        auto *dz = new QVBoxLayout(drop);
+        dz->setAlignment(Qt::AlignCenter);
+        dz->setSpacing(14);
+        dz->setContentsMargins(32, 32, 32, 32);
 
-    // ── Title ────────────────────────────────────────────
-    auto *appTitle = new QLabel("PDF Editor");
-    appTitle->setAlignment(Qt::AlignCenter);
-    appTitle->setStyleSheet(
-        "font-size: 28px; font-weight: 700; color: #FFFFFF; background: transparent;"
-        "letter-spacing: -0.5px;");
-    vl->addWidget(appTitle);
+        auto *iconLbl = new QLabel("⬆", drop);
+        iconLbl->setAttribute(Qt::WA_TransparentForMouseEvents);
+        iconLbl->setAlignment(Qt::AlignCenter);
+        iconLbl->setObjectName("dropIcon");
+        dz->addWidget(iconLbl);
 
-    auto *appSub = new QLabel("Professioneller PDF-Editor");
-    appSub->setAlignment(Qt::AlignCenter);
-    appSub->setStyleSheet("font-size: 13px; color: #666666; background: transparent;");
-    vl->addSpacing(6);
-    vl->addWidget(appSub);
-    vl->addSpacing(32);
+        auto *hint = new QLabel(tr("Drop a PDF here"), drop);
+        hint->setAttribute(Qt::WA_TransparentForMouseEvents);
+        hint->setAlignment(Qt::AlignCenter);
+        hint->setObjectName("dropHint");
+        dz->addWidget(hint);
 
-    // ── Open button ───────────────────────────────────────
-    auto *openBtn = new QPushButton("Datei öffnen …");
-    openBtn->setFixedHeight(44);
-    openBtn->setStyleSheet(
-        "QPushButton {"
-        "  background: #0078D4; color: white; border: none;"
-        "  border-radius: 10px; font-size: 14px; font-weight: 600;"
-        "}"
-        "QPushButton:hover { background: #1088E4; }"
-        "QPushButton:pressed { background: #006CBE; }");
-    connect(openBtn, &QPushButton::clicked, this, &MainWindow::openDialog);
-    vl->addWidget(openBtn);
+        auto *orLbl = new QLabel(tr("or"), drop);
+        orLbl->setAttribute(Qt::WA_TransparentForMouseEvents);
+        orLbl->setAlignment(Qt::AlignCenter);
+        orLbl->setObjectName("dropOr");
+        dz->addWidget(orLbl);
 
-    auto *dropHint = new QLabel("oder PDF per Drag & Drop hier ablegen");
-    dropHint->setAlignment(Qt::AlignCenter);
-    dropHint->setStyleSheet("font-size: 12px; color: #555555; background: transparent;");
-    vl->addSpacing(8);
-    vl->addWidget(dropHint);
-    vl->addSpacing(32);
+        auto *openBtn = new QPushButton(tr("Choose File…"), drop);
+        openBtn->setFixedSize(140, 34);
+        openBtn->setObjectName("dropOpenBtn");
+        connect(openBtn, &QPushButton::clicked, this, &MainWindow::openDialog);
+        dz->addWidget(openBtn, 0, Qt::AlignCenter);
 
-    // ── Divider ───────────────────────────────────────────
-    auto *divider = new QFrame;
-    divider->setFixedHeight(1);
-    divider->setStyleSheet("background: #333333; border: none;");
-    vl->addWidget(divider);
-    vl->addSpacing(20);
+        auto *overlay = new QPushButton(drop);
+        overlay->setFlat(true);
+        overlay->setStyleSheet("background:transparent; border:none;");
+        overlay->setGeometry(0, 0, 4000, 4000);
+        overlay->lower();
+        connect(overlay, &QPushButton::clicked, this, &MainWindow::openDialog);
+    }
+    cardVl->addWidget(drop);
+    cardVl->addSpacing(24);
 
-    // ── Recent files ──────────────────────────────────────
-    auto *recentHeader = new QLabel("ZULETZT GEÖFFNET");
-    recentHeader->setStyleSheet(
-        "font-size: 10px; font-weight: 700; color: #555555; background: transparent;"
-        "letter-spacing: 1.5px;");
-    vl->addWidget(recentHeader);
-    vl->addSpacing(10);
+    // ── Recent files ──
+    auto *recentLbl = new QLabel(tr("Recent Files"));
+    recentLbl->setObjectName("recentLabel");
+    cardVl->addWidget(recentLbl);
+    cardVl->addSpacing(6);
 
     m_recentList = new QListWidget;
+    m_recentList->setFrameShape(QFrame::NoFrame);
     m_recentList->setFixedHeight(168);
-    m_recentList->setStyleSheet(
-        "QListWidget { background: #1E1E1E; border: 1px solid #2E2E2E;"
-        "  border-radius: 10px; outline: none; padding: 4px; }"
-        "QListWidget::item { color: #D4D4D4; border-radius: 7px; padding: 4px 8px; }"
-        "QListWidget::item:hover    { background: #2A2D2E; }"
-        "QListWidget::item:selected { background: #0C3F6C; color: #FFFFFF; }");
+    m_recentList->setObjectName("recentList");
     rebuildRecentList();
-    connect(m_recentList, &QListWidget::itemDoubleClicked,
-            this, [this](QListWidgetItem *item) {
-        QString path = item->data(Qt::UserRole).toString();
-        if (!path.isEmpty()) openFile(path);
+    connect(m_recentList, &QListWidget::itemDoubleClicked, this,
+            [this](QListWidgetItem *item) {
+        openFile(item->data(Qt::UserRole).toString());
     });
-    vl->addWidget(m_recentList);
+    cardVl->addWidget(m_recentList);
 
-    outer->addWidget(card);
+    bodyVl->addWidget(card, 0, Qt::AlignHCenter);
+    bodyVl->addStretch(3);
+    root->addWidget(body, 1);
     return w;
 }
 
@@ -267,10 +293,24 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     buildToolbar();
     buildStatusBar();
 
-    connect(m_thumbs, &ThumbnailPanel::pageClicked, m_view, &PdfView::scrollToPage);
+    connect(m_thumbs, &ThumbnailPanel::pageClicked,            m_view,   &PdfView::scrollToPage);
+    connect(m_thumbs, &ThumbnailPanel::pageDeleteRequested,    this, &MainWindow::deletePage);
+    connect(m_thumbs, &ThumbnailPanel::pageDuplicateRequested, this, &MainWindow::duplicatePage);
+    connect(m_thumbs, &ThumbnailPanel::pageInsertRequested,    this, &MainWindow::insertBlankPage);
+    connect(m_thumbs, &ThumbnailPanel::pageMoveRequested, this, [this](int from, int to) {
+        if (!m_pdf->isOpen()) return;
+        if (m_pdf->movePage(from, to)) {
+            m_view->setDocument(m_pdf);
+            m_thumbs->setDocument(m_pdf);
+            onModified();
+        }
+    });
+    connect(m_view,   &PdfView::pageDeleteRequested,    this, &MainWindow::deletePage);
+    connect(m_view,   &PdfView::pageDuplicateRequested, this, &MainWindow::duplicatePage);
+    connect(m_view,   &PdfView::pageInsertRequested,    this, &MainWindow::insertBlankPage);
     connect(m_view,   &PdfView::modified, this, &MainWindow::onModified);
     connect(m_view,   &PdfView::pageChanged, this, [this](int pg) {
-        m_statusPage->setText(tr("Seite %1 / %2").arg(pg+1).arg(m_pdf->pageCount()));
+        m_statusPage->setText(tr("Page %1 / %2").arg(pg+1).arg(m_pdf->pageCount()));
         m_thumbs->setCurrentPage(pg);
     });
     connect(m_view,   &PdfView::zoomChanged, this, [this](float z) {
@@ -281,7 +321,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     });
     connect(m_view,   &PdfView::selectionChanged, this, [this](const QString &t) {
         if (!t.isEmpty())
-            statusBar()->showMessage(tr("Kopiert: \"%1\"").arg(t.left(40)), 2000);
+            statusBar()->showMessage(tr("Copied: \"%1\"").arg(t.left(40)), 2000);
     });
 
     applyTheme();
@@ -331,31 +371,30 @@ QAction *MainWindow::makeTool(const QString &icon, const QString &label,
 void MainWindow::buildMenus() {
     auto *mb = menuBar();
 
-    // ── Datei ──
-    auto *mFile = mb->addMenu(tr("&Datei"));
+    // ── File ──
+    auto *mFile = mb->addMenu(tr("&File"));
     {
-        auto *a = makeAct("file.open", tr("Öffnen …"), tr("PDF öffnen"), "Ctrl+O", tr("Datei"));
+        auto *a = makeAct("file.open", tr("Open …"), tr("Open PDF"), "Ctrl+O", tr("File"));
         connect(a, &QAction::triggered, this, &MainWindow::openDialog);
         mFile->addAction(a);
     }
     {
-        auto *a = makeAct("file.save", tr("Speichern"), tr("PDF speichern"), "Ctrl+S", tr("Datei"));
+        auto *a = makeAct("file.save", tr("Save"), tr("Save PDF"), "Ctrl+S", tr("File"));
         connect(a, &QAction::triggered, this, &MainWindow::saveFile);
         mFile->addAction(a);
     }
     {
-        auto *a = makeAct("file.saveas", tr("Speichern unter …"), tr("Speichern unter"), "Ctrl+Shift+S", tr("Datei"));
+        auto *a = makeAct("file.saveas", tr("Save As …"), tr("Save As"), "Ctrl+Shift+S", tr("File"));
         connect(a, &QAction::triggered, this, &MainWindow::saveAs);
         mFile->addAction(a);
     }
     mFile->addSeparator();
-    // Recent files submenu
-    auto *mRecent = mFile->addMenu(tr("Zuletzt geöffnet"));
+    auto *mRecent = mFile->addMenu(tr("Recently Opened"));
     connect(mRecent, &QMenu::aboutToShow, this, [this, mRecent]() {
         mRecent->clear();
         const QStringList files = recentFiles();
         if (files.isEmpty()) {
-            mRecent->addAction(tr("(leer)"))->setEnabled(false);
+            mRecent->addAction(tr("(empty)"))->setEnabled(false);
         } else {
             for (const QString &f : files) {
                 QFileInfo fi(f);
@@ -364,7 +403,7 @@ void MainWindow::buildMenus() {
                 connect(a, &QAction::triggered, this, [this, f]() { openFile(f); });
             }
             mRecent->addSeparator();
-            auto *clearAct = mRecent->addAction(tr("Liste leeren"));
+            auto *clearAct = mRecent->addAction(tr("Clear List"));
             connect(clearAct, &QAction::triggered, this, [this]() {
                 QSettings s("PDFEditor", "PDFEditor");
                 s.remove("recentFiles");
@@ -374,145 +413,130 @@ void MainWindow::buildMenus() {
     });
     mFile->addSeparator();
     {
-        auto *a = makeAct("file.close", tr("Schließen"), tr("Datei schließen"), "Ctrl+W", tr("Datei"));
+        auto *a = makeAct("file.close", tr("Close"), tr("Close file"), "Ctrl+W", tr("File"));
         connect(a, &QAction::triggered, this, &MainWindow::closeFile);
         mFile->addAction(a);
     }
     mFile->addSeparator();
     {
-        auto *a = new QAction(tr("Beenden"), this);
+        auto *a = new QAction(tr("Exit"), this);
         a->setShortcut(QKeySequence("Alt+F4"));
         connect(a, &QAction::triggered, this, &QMainWindow::close);
         mFile->addAction(a);
     }
 
-    // ── Bearbeiten ──
-    auto *mEdit = mb->addMenu(tr("&Bearbeiten"));
+    // ── Edit ──
+    auto *mEdit = mb->addMenu(tr("&Edit"));
     {
-        m_actUndo = makeAct("edit.undo", tr("Rückgängig"), tr("Schritt zurück"), "Ctrl+Z", tr("Bearbeiten"));
+        m_actUndo = makeAct("edit.undo", tr("Undo"), tr("Undo last action"), "Ctrl+Z", tr("Edit"));
         connect(m_actUndo, &QAction::triggered, this, &MainWindow::undo);
         mEdit->addAction(m_actUndo);
     }
     {
-        m_actRedo = makeAct("edit.redo", tr("Wiederholen"), tr("Schritt voraus"), "Ctrl+Y", tr("Bearbeiten"));
+        m_actRedo = makeAct("edit.redo", tr("Redo"), tr("Redo action"), "Ctrl+Y", tr("Edit"));
         connect(m_actRedo, &QAction::triggered, this, &MainWindow::redo);
         mEdit->addAction(m_actRedo);
     }
 
-    // ── Ansicht ──
-    auto *mView = mb->addMenu(tr("&Ansicht"));
+    // ── View ──
+    auto *mView = mb->addMenu(tr("&View"));
     {
-        auto *a = makeAct("view.zoomin", tr("Vergrößern"), tr("Vergrößern"), "Ctrl++", tr("Ansicht"));
+        auto *a = makeAct("view.zoomin", tr("Zoom In"), tr("Zoom In"), "Ctrl++", tr("View"));
         connect(a, &QAction::triggered, this, &MainWindow::zoomIn);
         mView->addAction(a);
     }
     {
-        auto *a = makeAct("view.zoomout", tr("Verkleinern"), tr("Verkleinern"), "Ctrl+-", tr("Ansicht"));
+        auto *a = makeAct("view.zoomout", tr("Zoom Out"), tr("Zoom Out"), "Ctrl+-", tr("View"));
         connect(a, &QAction::triggered, this, &MainWindow::zoomOut);
         mView->addAction(a);
     }
     {
-        auto *a = makeAct("view.zoomfit", tr("Auf Fenster anpassen"), tr("Anpassen"), "Ctrl+0", tr("Ansicht"));
+        auto *a = makeAct("view.zoomfit", tr("Fit to Window"), tr("Fit to Window"), "Ctrl+0", tr("View"));
         connect(a, &QAction::triggered, this, &MainWindow::zoomFit);
         mView->addAction(a);
     }
     mView->addSeparator();
     {
-        auto *a = makeAct("view.thumbs", tr("Seitenleiste"), tr("Seitenleiste ein/aus"), "Ctrl+B");
+        auto *a = makeAct("view.thumbs", tr("Page Panel"), tr("Toggle page panel"), "Ctrl+B");
         a->setCheckable(true); a->setChecked(true);
         connect(a, &QAction::toggled, this, &MainWindow::toggleThumbs);
         mView->addAction(a);
     }
-    mView->addSeparator();
-    {
-        auto *a = new QAction(tr("Dunkles Design"), this);
-        a->setCheckable(true); a->setChecked(m_darkMode);
-        connect(a, &QAction::toggled, this, [this](bool on) {
-            m_darkMode = on; applyTheme();
-        });
-        mView->addAction(a);
-    }
 
-    // ── Seite ──
-    auto *mPage = mb->addMenu(tr("&Seite"));
+    // ── Page ──
+    auto *mPage = mb->addMenu(tr("&Page"));
     {
-        auto *a = makeAct("page.rotleft", tr("Links drehen"), tr("90° links"), "Ctrl+[", tr("Seite"));
+        auto *a = makeAct("page.rotleft", tr("Rotate Left"), tr("Rotate 90° left"), "Ctrl+[", tr("Page"));
         connect(a, &QAction::triggered, this, &MainWindow::rotateLeft);
         mPage->addAction(a);
     }
     {
-        auto *a = makeAct("page.rotright", tr("Rechts drehen"), tr("90° rechts"), "Ctrl+]", tr("Seite"));
+        auto *a = makeAct("page.rotright", tr("Rotate Right"), tr("Rotate 90° right"), "Ctrl+]", tr("Page"));
         connect(a, &QAction::triggered, this, &MainWindow::rotateRight);
         mPage->addAction(a);
     }
     mPage->addSeparator();
     {
-        auto *a = makeAct("page.delete", tr("Seite löschen"), tr("Seite löschen"), "", tr("Seite"));
+        auto *a = makeAct("page.delete", tr("Delete Page"), tr("Delete current page"), "", tr("Page"));
         connect(a, &QAction::triggered, this, &MainWindow::deletePage);
         mPage->addAction(a);
     }
     {
-        auto *a = makeAct("page.dup", tr("Seite duplizieren"), tr("Seite duplizieren"), "", tr("Seite"));
+        auto *a = makeAct("page.dup", tr("Duplicate Page"), tr("Duplicate current page"), "", tr("Page"));
         connect(a, &QAction::triggered, this, &MainWindow::duplicatePage);
         mPage->addAction(a);
     }
-    mPage->addSeparator();
+
+    // ── Tools ──
+    auto *mTools = mb->addMenu(tr("&Tools"));
     {
-        auto *a = makeAct("page.form", tr("Formular ausfüllen …"), tr("Formular"), "Ctrl+F", tr("Seite"));
-        connect(a, &QAction::triggered, this, &MainWindow::openFormFiller);
-        mPage->addAction(a);
+        auto *a = makeAct("tools.merge", tr("Merge PDFs …"),
+                          tr("Insert pages from other PDFs"), "", tr("Tools"));
+        connect(a, &QAction::triggered, this, &MainWindow::mergePdfs);
+        mTools->addAction(a);
+    }
+    {
+        auto *a = makeAct("tools.split", tr("Extract Pages …"),
+                          tr("Save page range as a new file"), "", tr("Tools"));
+        connect(a, &QAction::triggered, this, &MainWindow::splitPdf);
+        mTools->addAction(a);
     }
 
-    // ── Einstellungen ──
-    auto *mSettings = mb->addMenu(tr("&Einstellungen"));
+    // ── Settings (direct action, not a submenu) ──
     {
-        auto *a = new QAction(tr("Einstellungen …"), this);
+        auto *a = new QAction(tr("&Settings"), this);
+        a->setShortcut(QKeySequence("Ctrl+,"));
         connect(a, &QAction::triggered, this, &MainWindow::openSettings);
-        mSettings->addAction(a);
-    }
-    {
-        auto *a = new QAction(tr("Tastenkürzel …"), this);
-        connect(a, &QAction::triggered, this, &MainWindow::openKeybinds);
-        mSettings->addAction(a);
-    }
-    mSettings->addSeparator();
-    {
-        auto *a = new QAction(tr("Als Standard-PDF-Viewer registrieren …"), this);
-        connect(a, &QAction::triggered, this, &MainWindow::registerAsDefaultPdf);
-        mSettings->addAction(a);
+        mb->addAction(a);
     }
 
-    // ── Hilfe ──
-    auto *mHelp = mb->addMenu(tr("&Hilfe"));
+    // ── Help ──
+    auto *mHelp = mb->addMenu(tr("&Help"));
     {
-        auto *a = new QAction(tr("Über PDF Editor …"), this);
+        auto *a = new QAction(tr("About PDF Editor …"), this);
         connect(a, &QAction::triggered, this, &MainWindow::showAbout);
         mHelp->addAction(a);
     }
 }
 
 void MainWindow::buildToolbar() {
-    // ── File toolbar ──
-    auto *tbFile = addToolBar(tr("Datei"));
+    // ── File / Edit toolbar ──
+    auto *tbFile = addToolBar(tr("File"));
     tbFile->setObjectName("tbFile");
     tbFile->setMovable(false);
-    tbFile->setIconSize(QSize(18, 18));
     tbFile->setToolButtonStyle(Qt::ToolButtonTextOnly);
 
     auto *openBtn = new QToolButton;
-    openBtn->setText("  " + tr("Öffnen"));
-    openBtn->setToolTip(tr("PDF öffnen  Ctrl+O"));
-    openBtn->setMinimumHeight(32);
-    openBtn->setStyleSheet(
-        "QToolButton { font-weight: 600; padding: 5px 16px; }"
-        "QToolButton:hover { background: #3A3A3A; border-radius: 6px; }");
+    openBtn->setText(tr("Open"));
+    openBtn->setToolTip(tr("Open PDF  Ctrl+O"));
+    openBtn->setMinimumHeight(28);
     connect(openBtn, &QToolButton::clicked, this, &MainWindow::openDialog);
     tbFile->addWidget(openBtn);
 
     auto *saveBtn = new QToolButton;
-    saveBtn->setText("  " + tr("Speichern"));
-    saveBtn->setToolTip(tr("Speichern  Ctrl+S"));
-    saveBtn->setMinimumHeight(32);
+    saveBtn->setText(tr("Save"));
+    saveBtn->setToolTip(tr("Save  Ctrl+S"));
+    saveBtn->setMinimumHeight(28);
     connect(saveBtn, &QToolButton::clicked, this, &MainWindow::saveFile);
     tbFile->addWidget(saveBtn);
 
@@ -527,7 +551,7 @@ void MainWindow::buildToolbar() {
     tbFile->addWidget(redoBtn);
 
     // ── Tools toolbar ──
-    auto *tbTools = addToolBar(tr("Werkzeuge"));
+    auto *tbTools = addToolBar(tr("Tools"));
     tbTools->setObjectName("tbTools");
     tbTools->setMovable(false);
     tbTools->setToolButtonStyle(Qt::ToolButtonTextOnly);
@@ -545,15 +569,15 @@ void MainWindow::buildToolbar() {
         return a;
     };
 
-    m_actSelect    = addTool(tr("Auswahl"),      tr("Text auswählen & kopieren  [S]"),  Tool::Select);
-    m_actHighlight = addTool(tr("Markieren"),    tr("Text markieren mit Farbe  [H]"),    Tool::Highlight);
-    m_actPen       = addTool(tr("Stift"),        tr("Freihand zeichnen  [P]"),           Tool::Pen);
-    m_actEraser    = addTool(tr("Radierer"),     tr("Anmerkung löschen  [E]"),           Tool::Eraser);
-    m_actText      = addTool(tr("Text"),         tr("Text einfügen / bearbeiten  [T]"),  Tool::Text);
+    m_actSelect    = addTool(tr("Select"),    tr("Select & copy text  [S]"),        Tool::Select);
+    m_actHighlight = addTool(tr("Highlight"), tr("Highlight text  [H]"),            Tool::Highlight);
+    m_actPen       = addTool(tr("Pen"),       tr("Freehand drawing  [P]"),          Tool::Pen);
+    m_actEraser    = addTool(tr("Eraser"),    tr("Delete annotation  [E]"),         Tool::Eraser);
+    m_actText      = addTool(tr("Text"),      tr("Insert text  [T]"),               Tool::Text);
 
-    m_actSignature = new QAction(tr("Unterschrift"), this);
+    m_actSignature = new QAction(tr("Signature"), this);
     m_actSignature->setCheckable(true);
-    m_actSignature->setToolTip(tr("Unterschrift einfügen  [U]"));
+    m_actSignature->setToolTip(tr("Insert signature  [U]"));
     toolGroup->addAction(m_actSignature);
     tbTools->addAction(m_actSignature);
     connect(m_actSignature, &QAction::triggered, this, &MainWindow::openSignatureDialog);
@@ -562,45 +586,81 @@ void MainWindow::buildToolbar() {
 
     tbTools->addSeparator();
 
-    auto *zoomLabel = new QLabel("  Zoom:");
-    zoomLabel->setStyleSheet("color: #858585; font-size: 12px; background: transparent;");
+    // ── Zoom ──
+    auto *zoomLabel = new QLabel(tr("Zoom"));
+    zoomLabel->setObjectName("zoomLabel");
     tbTools->addWidget(zoomLabel);
 
     m_zoomSlider = new QSlider(Qt::Horizontal);
     m_zoomSlider->setRange(25, 400);
-    m_zoomSlider->setValue(150);
-    m_zoomSlider->setFixedWidth(130);
-    m_zoomSlider->setToolTip(tr("Zoom ändern (Ctrl+Mausrad)"));
+    m_zoomSlider->setFixedWidth(120);
+    m_zoomSlider->setToolTip(tr("Zoom (Ctrl+Scroll)"));
     connect(m_zoomSlider, &QSlider::valueChanged, this, [this](int v) {
         m_view->setZoom(v / 100.f);
     });
+    {
+        QSettings qs("PDFEditor", "PDFEditor");
+        m_zoomSlider->setValue(qs.value("view/defaultZoom", 100).toInt());
+    }
     tbTools->addWidget(m_zoomSlider);
 
     tbTools->addSeparator();
 
-    auto *penColorBtn = new QToolButton;
-    penColorBtn->setText(tr("Stiftfarbe"));
-    penColorBtn->setToolTip(tr("Stiftfarbe wählen"));
-    connect(penColorBtn, &QToolButton::clicked, this, [=]() {
-        QColor c = QColorDialog::getColor(Qt::black, this, tr("Stiftfarbe"));
-        if (c.isValid()) m_view->setPenColor(c);
-    });
-    tbTools->addWidget(penColorBtn);
+    // ── Color swatches ──
+    // Each color button is paired with a thin colored strip below it.
+    auto makeColorWidget = [&](const QString &label, const QString &tip,
+                               QFrame **swatchOut,
+                               std::function<QColor()> getColor,
+                               std::function<void(QColor)> setColor) {
+        auto *wrap = new QWidget;
+        wrap->setToolTip(tip);
+        auto *vl = new QVBoxLayout(wrap);
+        vl->setContentsMargins(2, 3, 2, 3);
+        vl->setSpacing(3);
 
-    auto *hlColorBtn = new QToolButton;
-    hlColorBtn->setText(tr("Markierfarbe"));
-    hlColorBtn->setToolTip(tr("Markierungsfarbe wählen"));
-    connect(hlColorBtn, &QToolButton::clicked, this, [=]() {
-        QColor c = QColorDialog::getColor(Qt::yellow, this, tr("Markierfarbe"));
-        if (c.isValid()) m_view->setHighlightColor(c);
-    });
-    tbTools->addWidget(hlColorBtn);
+        auto *btn = new QToolButton;
+        btn->setText(label);
+        btn->setMinimumHeight(22);
+        btn->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        vl->addWidget(btn);
+
+        auto *swatch = new QFrame;
+        swatch->setFixedHeight(3);
+        swatch->setFrameShape(QFrame::NoFrame);
+        vl->addWidget(swatch);
+        *swatchOut = swatch;
+
+        swatch->setStyleSheet(QString("background:%1; border-radius:1px;")
+                              .arg(getColor().name()));
+
+        connect(btn, &QToolButton::clicked, this, [=]() {
+            QColor c = QColorDialog::getColor(getColor(), this, tip);
+            if (c.isValid()) {
+                setColor(c);
+                swatch->setStyleSheet(QString("background:%1; border-radius:1px;")
+                                      .arg(c.name()));
+            }
+        });
+        return wrap;
+    };
+
+    tbTools->addWidget(makeColorWidget(
+        tr("Pen Color"), tr("Choose pen color"),
+        &m_penColorSwatch,
+        [this]() { return m_view->penColor(); },
+        [this](QColor c) { m_view->setPenColor(c); }));
+
+    tbTools->addWidget(makeColorWidget(
+        tr("Highlight Color"), tr("Choose highlight color"),
+        &m_hlColorSwatch,
+        [this]() { return m_view->highlightColor(); },
+        [this](QColor c) { m_view->setHighlightColor(c); }));
 }
 
 void MainWindow::buildStatusBar() {
     m_statusFile = new QLabel;
     m_statusPage = new QLabel;
-    m_statusZoom = new QLabel("140%");
+    m_statusZoom = new QLabel("100%");
     statusBar()->addWidget(m_statusFile, 1);
     statusBar()->addPermanentWidget(m_statusPage);
     statusBar()->addPermanentWidget(m_statusZoom);
@@ -613,9 +673,78 @@ void MainWindow::buildStatusBar() {
 
 void MainWindow::applyTheme() {
     qApp->setStyleSheet(m_darkMode ? Theme::darkSheet() : Theme::lightSheet());
-    // Welcome widget needs explicit background since it's a child of QStackedWidget
-    m_welcomeWidget->setStyleSheet(
-        "QWidget#welcomeWidget { background: #1E1E1E; }");
+
+    if (m_darkMode) {
+        m_welcomeWidget->setStyleSheet(R"(
+QWidget#welcomeWidget   { background: #1C1C1C; }
+QWidget#welcomeHeader   { background: #242424; }
+QFrame#welcomeRule      { background: #2A2A2A; }
+QWidget#welcomeBody     { background: #1C1C1C; }
+QWidget#welcomeCard     { background: transparent; }
+QFrame#dropZone {
+    border: 1.5px dashed #444444;
+    border-radius: 10px;
+    background: #222222;
+}
+QFrame#dropZone:hover {
+    border-color: #CC3232;
+    background: #252020;
+}
+QLabel#dropIcon    { font-size: 28px; color: #555555; background: transparent; }
+QLabel#dropHint    { font-size: 16px; font-weight: 600; color: #CCCCCC; background: transparent; }
+QLabel#dropOr      { font-size: 12px; color: #555555; background: transparent; }
+QPushButton#dropOpenBtn {
+    background: #CC3232; color: #FFFFFF; border: none;
+    border-radius: 6px; font-size: 13px; font-weight: 600;
+}
+QPushButton#dropOpenBtn:hover   { background: #DD4444; }
+QPushButton#dropOpenBtn:pressed { background: #AA2424; }
+QLabel#recentLabel { font-size: 11px; font-weight: 600; color: #888888; background: transparent; }
+QLabel#verLabel    { font-size: 11px; color: #444444; background: transparent; }
+QListWidget#recentList {
+    background: #222222; border: 1px solid #333333;
+    border-radius: 8px; padding: 4px; outline: none;
+}
+QListWidget#recentList::item          { color: #BBBBBB; padding: 7px 12px; border-radius: 5px; }
+QListWidget#recentList::item:hover    { background: #2C2C2C; color: #FFFFFF; }
+QListWidget#recentList::item:selected { background: #CC3232; color: #FFFFFF; }
+)");
+    } else {
+        m_welcomeWidget->setStyleSheet(R"(
+QWidget#welcomeWidget   { background: #F2F2F2; }
+QWidget#welcomeHeader   { background: #FFFFFF; }
+QFrame#welcomeRule      { background: #E0E0E0; }
+QWidget#welcomeBody     { background: #F2F2F2; }
+QWidget#welcomeCard     { background: transparent; }
+QFrame#dropZone {
+    border: 1.5px dashed #CCCCCC;
+    border-radius: 10px;
+    background: #FFFFFF;
+}
+QFrame#dropZone:hover {
+    border-color: #CC3232;
+    background: #FFF8F8;
+}
+QLabel#dropIcon    { font-size: 28px; color: #BBBBBB; background: transparent; }
+QLabel#dropHint    { font-size: 16px; font-weight: 600; color: #333333; background: transparent; }
+QLabel#dropOr      { font-size: 12px; color: #AAAAAA; background: transparent; }
+QPushButton#dropOpenBtn {
+    background: #CC3232; color: #FFFFFF; border: none;
+    border-radius: 6px; font-size: 13px; font-weight: 600;
+}
+QPushButton#dropOpenBtn:hover   { background: #DD4444; }
+QPushButton#dropOpenBtn:pressed { background: #AA2424; }
+QLabel#recentLabel { font-size: 11px; font-weight: 600; color: #888888; background: transparent; }
+QLabel#verLabel    { font-size: 11px; color: #AAAAAA; background: transparent; }
+QListWidget#recentList {
+    background: #FFFFFF; border: 1px solid #E0E0E0;
+    border-radius: 8px; padding: 4px; outline: none;
+}
+QListWidget#recentList::item          { color: #333333; padding: 7px 12px; border-radius: 5px; }
+QListWidget#recentList::item:hover    { background: #F5F5F5; color: #1C1C1C; }
+QListWidget#recentList::item:selected { background: #CC3232; color: #FFFFFF; }
+)");
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -638,16 +767,16 @@ void MainWindow::showWelcome() {
 void MainWindow::openFile(const QString &path) {
     if (!confirmDiscard()) return;
     if (!m_pdf->open(path)) {
-        QMessageBox::warning(this, tr("Fehler"),
-            tr("Konnte Datei nicht öffnen:\n%1").arg(path));
+        QMessageBox::warning(this, tr("Error"),
+            tr("Could not open file:\n%1").arg(path));
         return;
     }
     m_view->setDocument(m_pdf);
     m_thumbs->setDocument(m_pdf);
     m_modified = false;
     m_statusFile->setText(QFileInfo(path).fileName());
-    m_statusPage->setText(tr("Seite 1 / %1").arg(m_pdf->pageCount()));
-    m_statusZoom->setText("140%");
+    m_statusPage->setText(tr("Page 1 / %1").arg(m_pdf->pageCount()));
+    m_statusZoom->setText(QString("%1%").arg(qRound(m_view->zoom() * 100)));
     updateTitle();
     updateUndoState();
     addRecentFile(path);
@@ -657,8 +786,8 @@ void MainWindow::openFile(const QString &path) {
 void MainWindow::openDialog() {
     if (!confirmDiscard()) return;
     QString path = QFileDialog::getOpenFileName(
-        this, tr("PDF öffnen"), {},
-        tr("PDF-Dateien (*.pdf);;Alle Dateien (*)"));
+        this, tr("Open PDF"), {},
+        tr("PDF Files (*.pdf);;All Files (*)"));
     if (!path.isEmpty()) openFile(path);
 }
 
@@ -667,26 +796,26 @@ void MainWindow::saveFile() {
     if (m_pdf->filePath().isEmpty()) { saveAs(); return; }
     if (m_pdf->save()) {
         setModified(false);
-        statusBar()->showMessage(tr("Gespeichert"), 2000);
+        statusBar()->showMessage(tr("Saved"), 2000);
     } else {
-        QMessageBox::warning(this, tr("Fehler"), tr("Speichern fehlgeschlagen."));
+        QMessageBox::warning(this, tr("Error"), tr("Save failed."));
     }
 }
 
 void MainWindow::saveAs() {
     if (!m_pdf->isOpen()) return;
     QString path = QFileDialog::getSaveFileName(
-        this, tr("Speichern unter"), m_pdf->filePath(),
-        tr("PDF-Dateien (*.pdf)"));
+        this, tr("Save As"), m_pdf->filePath(),
+        tr("PDF Files (*.pdf)"));
     if (path.isEmpty()) return;
     if (!path.endsWith(".pdf", Qt::CaseInsensitive)) path += ".pdf";
     if (m_pdf->save(path)) {
         setModified(false);
         m_statusFile->setText(QFileInfo(path).fileName());
         updateTitle();
-        statusBar()->showMessage(tr("Gespeichert"), 2000);
+        statusBar()->showMessage(tr("Saved"), 2000);
     } else {
-        QMessageBox::warning(this, tr("Fehler"), tr("Speichern fehlgeschlagen."));
+        QMessageBox::warning(this, tr("Error"), tr("Save failed."));
     }
 }
 
@@ -707,13 +836,13 @@ void MainWindow::closeFile() {
 bool MainWindow::confirmDiscard() {
     if (!m_modified || !m_pdf->isOpen()) return true;
     QMessageBox mb(this);
-    mb.setWindowTitle(tr("Ungespeicherte Änderungen"));
-    mb.setText(tr("Die Datei hat ungespeicherte Änderungen."));
-    mb.setInformativeText(tr("Möchten Sie die Änderungen speichern?"));
+    mb.setWindowTitle(tr("Unsaved Changes"));
+    mb.setText(tr("This file has unsaved changes."));
+    mb.setInformativeText(tr("Do you want to save the changes?"));
     mb.setIcon(QMessageBox::Question);
-    auto *btnSave    = mb.addButton(tr("Speichern"),      QMessageBox::AcceptRole);
-    auto *btnDiscard = mb.addButton(tr("Nicht speichern"),QMessageBox::DestructiveRole);
-    auto *btnCancel  = mb.addButton(tr("Abbrechen"),      QMessageBox::RejectRole);
+    auto *btnSave    = mb.addButton(tr("Save"),         QMessageBox::AcceptRole);
+    auto *btnDiscard = mb.addButton(tr("Don't Save"),   QMessageBox::DestructiveRole);
+    auto *btnCancel  = mb.addButton(tr("Cancel"),       QMessageBox::RejectRole);
     mb.setDefaultButton(btnSave);
     mb.exec();
     if (mb.clickedButton() == btnCancel)  return false;
@@ -807,8 +936,8 @@ void MainWindow::rotateRight() {
 void MainWindow::deletePage() {
     if (!m_pdf->isOpen() || m_pdf->pageCount() <= 1) return;
     int pg = m_view->currentPage();
-    auto ret = QMessageBox::question(this, tr("Seite löschen"),
-        tr("Seite %1 wirklich löschen?").arg(pg+1));
+    auto ret = QMessageBox::question(this, tr("Delete Page"),
+        tr("Really delete page %1?").arg(pg+1));
     if (ret != QMessageBox::Yes) return;
     if (m_pdf->deletePage(pg)) {
         m_view->setDocument(m_pdf);
@@ -825,11 +954,65 @@ void MainWindow::duplicatePage() {
         onModified();
     }
 }
+void MainWindow::insertBlankPage() {
+    if (!m_pdf->isOpen()) return;
+    int pg = m_view->currentPage();
+    if (m_pdf->insertBlankPage(pg)) {
+        m_view->setDocument(m_pdf);
+        m_thumbs->setDocument(m_pdf);
+        onModified();
+    }
+}
+void MainWindow::mergePdfs() {
+    if (!m_pdf->isOpen()) {
+        QMessageBox::information(this, tr("Note"),
+            tr("Please open a PDF first to merge pages into."));
+        return;
+    }
+    MergeDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    QStringList paths = dlg.selectedPaths();
+    if (paths.isEmpty()) return;
+    if (m_pdf->mergeFrom(paths)) {
+        m_view->setDocument(m_pdf);
+        m_thumbs->setDocument(m_pdf);
+        onModified();
+        statusBar()->showMessage(
+            tr("%1 file(s) merged.").arg(paths.size()), 3000);
+    } else {
+        QMessageBox::warning(this, tr("Error"), tr("Merge failed."));
+    }
+}
+
+void MainWindow::splitPdf() {
+    if (!m_pdf->isOpen()) {
+        QMessageBox::information(this, tr("Note"), tr("Please open a PDF first."));
+        return;
+    }
+    SplitDialog dlg(m_pdf->pageCount(), this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    QList<int> pages = dlg.selectedPages();
+    if (pages.isEmpty()) {
+        QMessageBox::warning(this, tr("Error"), tr("Invalid page range."));
+        return;
+    }
+    if (m_pdf->extractPages(dlg.outputPath(), pages)) {
+        statusBar()->showMessage(
+            tr("%1 pages saved to %2").arg(pages.size()).arg(dlg.outputPath()), 4000);
+    } else {
+        QMessageBox::warning(this, tr("Error"), tr("Extraction failed."));
+    }
+}
+
+void MainWindow::addWatermark() {
+    // Watermark feature has been removed.
+}
+
 void MainWindow::insertImageToPage() {
     if (!m_pdf->isOpen()) return;
     QString path = QFileDialog::getOpenFileName(
-        this, tr("Bild wählen"), {},
-        tr("Bilder (*.png *.jpg *.jpeg *.bmp);;Alle Dateien (*)"));
+        this, tr("Choose Image"), {},
+        tr("Images (*.png *.jpg *.jpeg *.bmp);;All Files (*)"));
     if (path.isEmpty()) return;
     int pg = m_view->currentPage();
     PageSize ps = m_pdf->pageSize(pg);
@@ -844,12 +1027,7 @@ void MainWindow::insertImageToPage() {
 // ─────────────────────────────────────────────────────────────
 
 void MainWindow::openFormFiller() {
-    if (!m_pdf->isOpen()) return;
-    auto fields = m_pdf->getFormFields();
-    QMessageBox::information(this, tr("Formular"),
-        fields.isEmpty()
-            ? tr("Dieses Dokument enthält keine ausfüllbaren Felder.")
-            : tr("Formular enthält %1 Feld(er).").arg(fields.size()));
+    // Form fields are shown as inline overlays automatically when a PDF is opened.
 }
 
 void MainWindow::openSignatureDialog() {
@@ -858,7 +1036,7 @@ void MainWindow::openSignatureDialog() {
         m_view->setSignaturePath(dlg.selectedPath());
         setActiveTool(Tool::Signature);
         m_actSignature->setChecked(true);
-        statusBar()->showMessage(tr("Unterschrift: auf Seite klicken zum Einfügen"), 3000);
+        statusBar()->showMessage(tr("Signature: click on page to place, drag to resize"), 3000);
     }
 }
 
@@ -869,182 +1047,149 @@ void MainWindow::openKeybinds() {
 
 void MainWindow::openSettings() {
     QDialog dlg(this);
-    dlg.setWindowTitle(tr("Einstellungen"));
-    dlg.setMinimumWidth(480);
+    dlg.setWindowTitle(tr("Settings"));
+    dlg.setMinimumSize(520, 460);
 
-    auto *lay = new QVBoxLayout(&dlg);
-    lay->setSpacing(16);
-    lay->setContentsMargins(20, 20, 20, 20);
+    auto *mainLay = new QVBoxLayout(&dlg);
+    mainLay->setContentsMargins(0, 0, 0, 0);
+    mainLay->setSpacing(0);
+
+    auto *tabs = new QTabWidget(&dlg);
+    mainLay->addWidget(tabs, 1);
 
     QSettings s("PDFEditor", "PDFEditor");
 
-    auto makeHeader = [](const QString &t) {
+    // ─────────────────────────────────────────
+    // Tab: General
+    // ─────────────────────────────────────────
+    auto *genTab  = new QWidget;
+    auto *genLay  = new QVBoxLayout(genTab);
+    genLay->setContentsMargins(20, 20, 20, 20);
+    genLay->setSpacing(12);
+
+    auto mkLabel = [](const QString &t) {
         auto *l = new QLabel(t);
-        l->setStyleSheet("font-weight: 700; font-size: 13px; color: #CCCCCC;");
+        l->setMinimumWidth(160);
         return l;
     };
-    auto makeSep = []() {
-        auto *f = new QFrame;
-        f->setFrameShape(QFrame::HLine);
-        f->setStyleSheet("color: #3C3C3C;");
-        return f;
+    auto mkRow = [](QWidget *lbl, QWidget *ctrl, QHBoxLayout *&hl) {
+        hl = new QHBoxLayout;
+        hl->addWidget(lbl);
+        hl->addWidget(ctrl, 1);
+        return hl;
     };
 
-    // ── Allgemein ──
-    lay->addWidget(makeHeader(tr("Allgemein")));
-
-    auto *startupRow = new QHBoxLayout;
-    startupRow->addWidget(new QLabel(tr("Beim Start:")));
     auto *startupCombo = new QComboBox;
-    startupCombo->addItem(tr("Willkommensbildschirm"), "welcome");
-    startupCombo->addItem(tr("Letzte Datei öffnen"),   "lastfile");
-    startupCombo->addItem(tr("Leerer Editor"),          "empty");
-    QString startupVal = s.value("startup/mode", "welcome").toString();
-    startupCombo->setCurrentIndex(startupCombo->findData(startupVal));
-    startupRow->addWidget(startupCombo, 1);
-    lay->addLayout(startupRow);
+    startupCombo->addItem(tr("Welcome screen"), "welcome");
+    startupCombo->addItem(tr("Open last file"),  "lastfile");
+    startupCombo->addItem(tr("Empty editor"),    "empty");
+    startupCombo->setCurrentIndex(
+        startupCombo->findData(s.value("startup/mode", "welcome")));
+    QHBoxLayout *hl1; genLay->addLayout(mkRow(mkLabel(tr("On startup:")), startupCombo, hl1));
 
-    auto *zoomRow = new QHBoxLayout;
-    zoomRow->addWidget(new QLabel(tr("Standard-Zoom:")));
     auto *zoomCombo = new QComboBox;
     for (int v : {50, 75, 100, 125, 150, 175, 200})
         zoomCombo->addItem(QString("%1%").arg(v), v);
-    int zoomVal = s.value("view/defaultZoom", 150).toInt();
-    int zi = zoomCombo->findData(zoomVal);
-    zoomCombo->setCurrentIndex(zi >= 0 ? zi : 4);
-    zoomRow->addWidget(zoomCombo, 1);
-    lay->addLayout(zoomRow);
+    {
+        int zi = zoomCombo->findData(s.value("view/defaultZoom", 100));
+        zoomCombo->setCurrentIndex(zi >= 0 ? zi : 2);
+    }
+    QHBoxLayout *hl2; genLay->addLayout(mkRow(mkLabel(tr("Default zoom:")), zoomCombo, hl2));
 
-    lay->addWidget(makeSep());
-
-    // ── Ansicht ──
-    lay->addWidget(makeHeader(tr("Ansicht")));
-
-    auto *spacingRow = new QHBoxLayout;
-    spacingRow->addWidget(new QLabel(tr("Seitenabstand (px):")));
-    auto *spacingSpin = new QSpinBox;
-    spacingSpin->setRange(4, 48);
-    spacingSpin->setValue(s.value("view/pageSpacing", 16).toInt());
-    spacingRow->addWidget(spacingSpin, 1);
-    lay->addLayout(spacingRow);
-
-    auto *recentRow = new QHBoxLayout;
-    recentRow->addWidget(new QLabel(tr("Zuletzt geöffnet (max.):")));
     auto *recentSpin = new QSpinBox;
     recentSpin->setRange(3, 20);
     recentSpin->setValue(s.value("recentFiles/max", 10).toInt());
-    recentRow->addWidget(recentSpin, 1);
-    lay->addLayout(recentRow);
+    QHBoxLayout *hl3; genLay->addLayout(mkRow(mkLabel(tr("Recent files (max):")), recentSpin, hl3));
 
-    lay->addWidget(makeSep());
+    genLay->addStretch();
+    tabs->addTab(genTab, tr("General"));
 
-    // ── Sprache ──
-    lay->addWidget(makeHeader(tr("Sprache")));
-    auto *langRow = new QHBoxLayout;
-    langRow->addWidget(new QLabel(tr("Sprache:")));
-    auto *langCombo = new QComboBox;
-    langCombo->addItem("Deutsch",  "de");
-    langCombo->addItem("English",  "en");
-    QString lang = s.value("ui/language", "de").toString();
-    langCombo->setCurrentIndex(langCombo->findData(lang));
-    langRow->addWidget(langCombo, 1);
-    lay->addLayout(langRow);
+    // ─────────────────────────────────────────
+    // Tab: Appearance
+    // ─────────────────────────────────────────
+    auto *appTab = new QWidget;
+    auto *appLay = new QVBoxLayout(appTab);
+    appLay->setContentsMargins(20, 20, 20, 20);
+    appLay->setSpacing(12);
 
-    auto *langHint = new QLabel(tr("* Sprachänderung wird nach Neustart übernommen."));
-    langHint->setStyleSheet("color: #666666; font-size: 11px;");
-    lay->addWidget(langHint);
-
-    lay->addWidget(makeSep());
-
-    // ── Unterschrift ──
-    lay->addWidget(makeHeader(tr("Unterschrift")));
-    auto *sigRow = new QHBoxLayout;
-    sigRow->addWidget(new QLabel(tr("Gespeicherte Unterschrift:")));
-    QString appDir2 = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QString savedSig = appDir2 + "/saved_signature.png";
-    auto *sigStatus = new QLabel(QFile::exists(savedSig) ? tr("Vorhanden") : tr("Keine"));
-    sigStatus->setStyleSheet(QFile::exists(savedSig) ?
-        "color: #4CAF50;" : "color: #666666;");
-    sigRow->addWidget(sigStatus, 1);
-    auto *clearSigBtn = new QPushButton(tr("Löschen"));
-    clearSigBtn->setEnabled(QFile::exists(savedSig));
-    connect(clearSigBtn, &QPushButton::clicked, &dlg, [=]() mutable {
-        QFile::remove(savedSig);
-        m_view->setSignaturePath({});
-        sigStatus->setText(tr("Keine"));
-        sigStatus->setStyleSheet("color: #666666;");
-        clearSigBtn->setEnabled(false);
+    auto *themeRow = new QHBoxLayout;
+    auto *themeLabel = new QLabel(tr("Theme:"));
+    auto *themeCombo = new QComboBox;
+    themeCombo->addItem(tr("Light"));
+    themeCombo->addItem(tr("Dark"));
+    themeCombo->setCurrentIndex(m_darkMode ? 1 : 0);
+    connect(themeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int idx) {
+        m_darkMode = (idx == 1);
+        applyTheme();
     });
-    sigRow->addWidget(clearSigBtn);
-    lay->addLayout(sigRow);
+    themeRow->addWidget(themeLabel);
+    themeRow->addWidget(themeCombo);
+    themeRow->addStretch();
+    appLay->addLayout(themeRow);
 
-    lay->addStretch();
+    auto *spacingSpin = new QSpinBox;
+    spacingSpin->setRange(4, 48);
+    spacingSpin->setValue(s.value("view/pageSpacing", 16).toInt());
+    QHBoxLayout *hlSp; appLay->addLayout(mkRow(mkLabel(tr("Page spacing (px):")), spacingSpin, hlSp));
 
-    // ── Buttons ──
-    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    bb->button(QDialogButtonBox::Ok)->setText(tr("Übernehmen"));
-    bb->button(QDialogButtonBox::Cancel)->setText(tr("Abbrechen"));
+    appLay->addStretch();
+    tabs->addTab(appTab, tr("Appearance"));
+
+    // ─────────────────────────────────────────
+    // Tab: Shortcuts
+    // ─────────────────────────────────────────
+    auto *scTab = new QWidget;
+    auto *scLay = new QVBoxLayout(scTab);
+    scLay->setContentsMargins(20, 20, 20, 20);
+    scLay->setSpacing(8);
+
+    auto *scTable = new QListWidget;
+    scTable->setAlternatingRowColors(true);
+    scTable->setSelectionMode(QAbstractItemView::NoSelection);
+
+    // Populate with current shortcuts (read-only display for now)
+    for (const auto &def : m_actionDefs) {
+        QSettings qs("PDFEditor", "PDFEditor");
+        QString key = qs.value("shortcuts/" + def.id, def.defaultShortcut.toString()).toString();
+        auto *item = new QListWidgetItem(
+            QString("%1   %2").arg(def.name, -30).arg(key));
+        scTable->addItem(item);
+    }
+
+    scLay->addWidget(new QLabel(tr("To customize shortcuts, double-click an action:")));
+    scLay->addWidget(scTable, 1);
+
+    auto *editScBtn = new QPushButton(tr("Edit Shortcuts …"));
+    connect(editScBtn, &QPushButton::clicked, this, [this]() {
+        KeybindDialog dlg2(m_actionDefs, m_actMap, this);
+        dlg2.exec();
+    });
+    scLay->addWidget(editScBtn);
+
+    tabs->addTab(scTab, tr("Shortcuts"));
+
+    // ─────────────────────────────────────────
+    // OK / Cancel
+    // ─────────────────────────────────────────
+    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                                    &dlg);
+    bb->setContentsMargins(12, 8, 12, 12);
     connect(bb, &QDialogButtonBox::accepted, &dlg, [&]() {
-        QString oldLang = s.value("ui/language", "de").toString();
-        QString newLang = langCombo->currentData().toString();
-        s.setValue("startup/mode",      startupCombo->currentData().toString());
-        s.setValue("view/defaultZoom",  zoomCombo->currentData().toInt());
-        s.setValue("view/pageSpacing",  spacingSpin->value());
-        s.setValue("recentFiles/max",   recentSpin->value());
-        s.setValue("ui/language",       newLang);
+        s.setValue("startup/mode",     startupCombo->currentData().toString());
+        s.setValue("view/defaultZoom", zoomCombo->currentData().toInt());
+        s.setValue("recentFiles/max",  recentSpin->value());
+        s.setValue("view/pageSpacing", spacingSpin->value());
         dlg.accept();
-
-        if (newLang != oldLang) {
-            auto res = QMessageBox::question(this,
-                tr("Sprache geändert"),
-                tr("Die Sprache wurde geändert. Jetzt neu starten?"),
-                QMessageBox::Yes | QMessageBox::No);
-            if (res == QMessageBox::Yes) {
-                // Pass currently open file so it reopens after restart
-                QStringList args;
-                if (m_pdf && m_pdf->isOpen() && !m_pdf->filePath().isEmpty())
-                    args << m_pdf->filePath();
-                QProcess::startDetached(QCoreApplication::applicationFilePath(), args);
-                QApplication::quit();
-            }
-        }
     });
     connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-    lay->addWidget(bb);
+    mainLay->addWidget(bb);
 
     dlg.exec();
 }
 
 void MainWindow::registerAsDefaultPdf() {
-#ifdef Q_OS_WIN
-    QString exePath = QCoreApplication::applicationFilePath().replace('/', '\\');
-    QSettings reg("HKEY_CURRENT_USER\\Software\\Classes", QSettings::NativeFormat);
-
-    // Register ProgID
-    reg.setValue("PDFEditor.Document/Default", "PDF Editor Dokument");
-    reg.setValue("PDFEditor.Document/shell/open/command/Default",
-                 QString("\"%1\" \"%2\"").arg(exePath, "%1"));
-
-    // Register as capable application
-    QSettings cap("HKEY_CURRENT_USER\\Software\\PDFEditor", QSettings::NativeFormat);
-    cap.setValue("ApplicationName", "PDF Editor");
-    cap.setValue("ApplicationDescription", "Professioneller PDF-Editor");
-
-    QSettings regApps("HKEY_CURRENT_USER\\Software\\RegisteredApplications", QSettings::NativeFormat);
-    regApps.setValue("PDFEditor", "Software\\PDFEditor\\Capabilities");
-
-    QSettings capExt("HKEY_CURRENT_USER\\Software\\PDFEditor\\Capabilities\\FileAssociations", QSettings::NativeFormat);
-    capExt.setValue(".pdf", "PDFEditor.Document");
-
-    QMessageBox::information(this, tr("Standard-Viewer"),
-        tr("PDF Editor wurde als fähige Anwendung registriert.\n\n"
-           "Um PDF Editor als Standard festzulegen:\n"
-           "Windows-Einstellungen → Apps → Standard-Apps → PDF Editor auswählen\n\n"
-           "oder: Windows-Einstellungen → Standard-Apps → .pdf → PDF Editor"));
-#else
-    QMessageBox::information(this, tr("Standard-Viewer"),
-        tr("Diese Funktion ist nur unter Windows verfügbar."));
-#endif
+    // This option has been removed.
 }
 
 void MainWindow::toggleThumbs() {
@@ -1053,7 +1198,7 @@ void MainWindow::toggleThumbs() {
 
 void MainWindow::showAbout() {
     auto *dlg = new QDialog(this);
-    dlg->setWindowTitle(tr("Über PDF Editor"));
+    dlg->setWindowTitle(tr("About PDF Editor"));
     dlg->setFixedWidth(420);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
 
@@ -1083,7 +1228,7 @@ void MainWindow::showAbout() {
     hTitleCol->setSpacing(2);
     auto *hTitle = new QLabel("PDF Editor");
     hTitle->setStyleSheet("font-size: 20px; font-weight: 700; color: white; background: transparent;");
-    auto *hVer = new QLabel("Version 1.0.0");
+    auto *hVer = new QLabel("Version 1.4.8");
     hVer->setStyleSheet("font-size: 13px; color: rgba(255,255,255,0.75); background: transparent;");
     hTitleCol->addWidget(hTitle);
     hTitleCol->addWidget(hVer);
@@ -1112,9 +1257,10 @@ void MainWindow::showAbout() {
         cl->addLayout(row);
     };
 
-    addRow(tr("Build-Datum"), QString(__DATE__));
-    addRow(tr("Qt-Version"), QT_VERSION_STR);
-    addRow(tr("MuPDF-Version"), FZ_VERSION);
+    addRow(tr("Created by"),    "Tobias Wotke");
+    addRow(tr("Build Date"),    QString(__DATE__));
+    addRow(tr("Qt Version"),    QT_VERSION_STR);
+    addRow(tr("MuPDF Version"), FZ_VERSION);
 
     vl->addWidget(content);
 
@@ -1124,7 +1270,7 @@ void MainWindow::showAbout() {
     auto *bl = new QHBoxLayout(btnBox);
     bl->setContentsMargins(16, 12, 16, 12);
     bl->addStretch();
-    auto *closeBtn = new QPushButton(tr("Schließen"));
+    auto *closeBtn = new QPushButton(tr("Close"));
     closeBtn->setDefault(true);
     connect(closeBtn, &QPushButton::clicked, dlg, &QDialog::accept);
     bl->addWidget(closeBtn);
@@ -1173,7 +1319,11 @@ void MainWindow::setModified(bool m) {
     updateUndoState();
 }
 
-void MainWindow::onModified() { setModified(true); }
+void MainWindow::onModified() {
+    setModified(true);
+    if (m_pdf && m_pdf->isOpen())
+        m_thumbs->refreshPage(m_view->currentPage());
+}
 
 void MainWindow::updateTitle() {
     QString title;

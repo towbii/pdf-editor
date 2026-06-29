@@ -4,6 +4,7 @@ project(PDFEditor LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
 
@@ -46,6 +47,8 @@ set(SOURCES
     src/SignatureDialog.cpp
     src/SignaturePickerDialog.cpp
     src/KeybindDialog.cpp
+    src/PdfToolDialogs.cpp
+    translations/translations.qrc
 )
 if(WIN32)
     list(APPEND SOURCES src/PDFEditor.rc)
@@ -58,6 +61,7 @@ set(HEADERS
     src/SignatureDialog.h
     src/SignaturePickerDialog.h
     src/KeybindDialog.h
+    src/PdfToolDialogs.h
     src/Theme.h
 )
 

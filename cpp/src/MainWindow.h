@@ -12,6 +12,7 @@
 #include "PdfView.h"
 #include "ThumbnailPanel.h"
 #include "KeybindDialog.h"
+#include "PdfToolDialogs.h"
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -49,6 +50,8 @@ private:
 
     // Toolbar
     QSlider *m_zoomSlider;
+    QFrame  *m_penColorSwatch   = nullptr;
+    QFrame  *m_hlColorSwatch    = nullptr;
 
     // Tool actions (checkable)
     QAction *m_actSelect, *m_actHighlight, *m_actPen,
@@ -100,6 +103,12 @@ private:
     void rotateRight();
     void deletePage();
     void duplicatePage();
+    void insertBlankPage();
+
+    // PDF tools
+    void mergePdfs();
+    void splitPdf();
+    void addWatermark();
     void insertImageToPage();
     void openFormFiller();
     void openSignatureDialog();

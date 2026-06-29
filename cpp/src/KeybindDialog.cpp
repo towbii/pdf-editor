@@ -14,7 +14,7 @@ KeybindDialog::KeybindDialog(const QList<ActionDef> &defs,
                               QMap<QString, QAction*> &actMap,
                               QWidget *parent)
     : QDialog(parent), m_defs(defs), m_actMap(actMap) {
-    setWindowTitle(tr("Tastenkürzel bearbeiten"));
+    setWindowTitle(tr("Edit Shortcuts"));
     setModal(true);
     setMinimumSize(500, 580);
 
@@ -22,7 +22,7 @@ KeybindDialog::KeybindDialog(const QList<ActionDef> &defs,
     lay->setSpacing(10);
     lay->setContentsMargins(14, 14, 14, 14);
 
-    auto *hint = new QLabel(tr("Klick in ein Feld, dann Tastenkombination drücken."));
+    auto *hint = new QLabel(tr("Click a field, then press a key combination."));
     hint->setStyleSheet("color: #8e8e93; font-size: 11px;");
     lay->addWidget(hint);
 
@@ -67,7 +67,7 @@ KeybindDialog::KeybindDialog(const QList<ActionDef> &defs,
 
         auto *clr = new QPushButton("✕");
         clr->setFixedSize(24, 24);
-        clr->setToolTip(tr("Kürzel entfernen"));
+        clr->setToolTip(tr("Clear shortcut"));
         clr->setStyleSheet("QPushButton{padding:0;font-size:10px;min-width:0;}");
         connect(clr, &QPushButton::clicked, this, [ed]() { ed->clear(); });
 
@@ -81,7 +81,7 @@ KeybindDialog::KeybindDialog(const QList<ActionDef> &defs,
     lay->addWidget(scroll);
 
     auto *botLay = new QHBoxLayout;
-    auto *resetBtn = new QPushButton(tr("Alle zurücksetzen"));
+    auto *resetBtn = new QPushButton(tr("Reset All"));
     connect(resetBtn, &QPushButton::clicked, this, &KeybindDialog::resetAll);
     botLay->addWidget(resetBtn);
     botLay->addStretch();
