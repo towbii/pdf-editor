@@ -14,6 +14,8 @@ Run `PDFEditor-Setup.exe` and follow the wizard. No Qt, no Visual Studio, no dep
 > The application is fully open source — you can review every line of code in this repository.
 > To install anyway: click **More info → Run anyway** in the SmartScreen dialog, or go to **Windows Security → Protection history**, find the entry and choose **Allow**.
 
+> **🔒 Your data is always safe.** Signatures, settings, and recent files are stored in `%APPDATA%\PDFEditor\` and are never modified by the installer or uninstaller. Updating to a new version preserves everything automatically.
+
 ## Features
 
 ### Annotation tools
