@@ -340,18 +340,21 @@ int main(int argc, char *argv[]) {
     win.show();
 
 #ifdef Q_OS_WIN
-    // Force the taskbar button to use our programmatic icon via WM_SETICON.
-    // Qt's setWindowIcon() sets the window-class icon, but Windows taskbar
-    // reads the per-HWND icon set by WM_SETICON.
+    // Load the icon directly from the embedded .exe resource (same source as
+    // Explorer uses) and push it to the HWND via WM_SETICON so the taskbar
+    // button matches exactly what you see on the file in Explorer.
     {
-        QIcon appIcon = app.windowIcon();
-        HICON hBig   = appIcon.pixmap(256, 256).toImage()
-                           .scaled(256, 256, Qt::KeepAspectRatio, Qt::SmoothTransformation)
-                           .toHICON();
-        HICON hSmall = appIcon.pixmap(16, 16).toImage()
-                           .scaled(16, 16, Qt::KeepAspectRatio, Qt::SmoothTransformation)
-                           .toHICON();
         HWND hwnd = reinterpret_cast<HWND>(win.winId());
+        HICON hBig = static_cast<HICON>(
+            LoadImage(GetModuleHandle(nullptr), L"IDI_ICON1",
+                      IMAGE_ICON, 256, 256, LR_DEFAULTCOLOR));
+        if (!hBig)
+            hBig = static_cast<HICON>(
+                LoadImage(GetModuleHandle(nullptr), MAKEINTRESOURCE(1),
+                          IMAGE_ICON, 256, 256, LR_DEFAULTCOLOR));
+        HICON hSmall = static_cast<HICON>(
+            LoadImage(GetModuleHandle(nullptr), MAKEINTRESOURCE(1),
+                      IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
         if (hBig)   SendMessage(hwnd, WM_SETICON, ICON_BIG,   reinterpret_cast<LPARAM>(hBig));
         if (hSmall) SendMessage(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hSmall));
     }
