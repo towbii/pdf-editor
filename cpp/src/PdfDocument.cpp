@@ -984,7 +984,11 @@ bool PdfDocument::insertBlankPage(int afterPageNum) {
                 fz_drop_page(m_ctx, (fz_page*)pp);
             }
         }
-        pdf_obj *page = pdf_add_page(m_ctx, m_pdoc, mediabox, 0, nullptr, nullptr);
+        pdf_obj *resources = pdf_add_object(m_ctx, m_pdoc, pdf_new_dict(m_ctx, m_pdoc, 1));
+        fz_buffer *contents = fz_new_buffer(m_ctx, 0);
+        pdf_obj *page = pdf_add_page(m_ctx, m_pdoc, mediabox, 0, resources, contents);
+        fz_drop_buffer(m_ctx, contents);
+        pdf_drop_obj(m_ctx, resources);
         pdf_insert_page(m_ctx, m_pdoc, afterPageNum + 1, page);
         pdf_drop_obj(m_ctx, page);
         ok = true;

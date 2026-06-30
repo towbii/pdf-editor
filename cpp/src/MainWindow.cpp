@@ -45,6 +45,7 @@
 #include <QTextEdit>
 #include <QProcess>
 #include <QIntValidator>
+#include <QToolButton>
 #include <QPrinter>
 #include <QPrintDialog>
 
@@ -716,27 +717,29 @@ void MainWindow::buildToolbar() {
     {
         auto *wrap = new QWidget;
         auto *lay  = new QHBoxLayout(wrap);
-        lay->setContentsMargins(4, 0, 4, 0);
+        lay->setContentsMargins(2, 0, 2, 0);
         lay->setSpacing(2);
 
-        auto *prevPage = new QPushButton("◀");
-        prevPage->setFixedSize(24, 24);
-        prevPage->setToolTip(tr("Previous page"));
-        prevPage->setFlat(true);
+        auto makeNavBtn = [](const QString &text, const QString &tip) {
+            auto *btn = new QToolButton;
+            btn->setText(text);
+            btn->setToolTip(tip);
+            btn->setFixedSize(20, 22);
+            btn->setAutoRaise(true);
+            return btn;
+        };
+        auto *prevPage = makeNavBtn("◀", tr("Previous page"));
 
         m_pageEdit = new QLineEdit("1");
-        m_pageEdit->setFixedWidth(38);
+        m_pageEdit->setFixedWidth(36);
         m_pageEdit->setAlignment(Qt::AlignCenter);
         m_pageEdit->setValidator(new QIntValidator(1, 99999, this));
         m_pageEdit->setToolTip(tr("Page number — press Enter to jump"));
 
         m_pageTotalLabel = new QLabel("/ 1");
-        m_pageTotalLabel->setStyleSheet("color:#777;");
+        m_pageTotalLabel->setStyleSheet("color:#777; margin-right:2px;");
 
-        auto *nextPage = new QPushButton("▶");
-        nextPage->setFixedSize(24, 24);
-        nextPage->setToolTip(tr("Next page"));
-        nextPage->setFlat(true);
+        auto *nextPage = makeNavBtn("▶", tr("Next page"));
 
         lay->addWidget(prevPage);
         lay->addWidget(m_pageEdit);
