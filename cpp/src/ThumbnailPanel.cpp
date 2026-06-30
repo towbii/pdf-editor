@@ -86,8 +86,9 @@ void ThumbnailItem::mouseMoveEvent(QMouseEvent *ev) {
 
     m_dragStarted = true;
 
-    // Notify parent panel to handle the drag
-    auto *panel = qobject_cast<ThumbnailPanel*>(parent() ? parent()->parent() : nullptr);
+    // parent chain: ThumbnailItem → m_container → viewport() → ThumbnailPanel
+    auto *panel = qobject_cast<ThumbnailPanel*>(
+        parent() && parent()->parent() ? parent()->parent()->parent() : nullptr);
     if (!panel) return;
 
     panel->beginDrag(m_pageNum, mapToGlobal(ev->pos()));
@@ -220,9 +221,14 @@ void ThumbnailPanel::beginDrag(int fromPage, QPoint /*globalPos*/) {
     if (m_items.isEmpty() || fromPage < 0 || fromPage >= m_items.size()) return;
     m_dragFrom = fromPage;
     m_dropIndicatorPos = fromPage;
-    // Make the dragged item semi-transparent
-    m_items[fromPage]->setWindowOpacity(0.4);
+    // Dim the dragged item with stylesheet (setWindowOpacity only works on top-level)
+    m_items[fromPage]->setStyleSheet(
+        "background: #1a1a1a; border-radius: 8px; opacity: 0.4;");
     m_items[fromPage]->update();
+    // Grab mouse so all move/release events reach the viewport eventFilter
+    // even when the cursor is over child ThumbnailItem widgets
+    viewport()->grabMouse();
+    setCursor(Qt::ClosedHandCursor);
 }
 
 void ThumbnailPanel::updateDragIndicator(int dropPos) {
@@ -247,8 +253,11 @@ void ThumbnailPanel::updateDragIndicator(int dropPos) {
 
 void ThumbnailPanel::endDrag(int dropPos) {
     m_dropLine->hide();
+    viewport()->releaseMouse();
+    unsetCursor();
+
     if (m_dragFrom >= 0 && m_dragFrom < m_items.size())
-        m_items[m_dragFrom]->setWindowOpacity(1.0);
+        m_items[m_dragFrom]->setStyleSheet("background: transparent; border-radius: 8px;");
 
     int from = m_dragFrom;
     m_dragFrom = -1;
@@ -299,33 +308,34 @@ bool ThumbnailPanel::eventFilter(QObject *obj, QEvent *ev) {
         }
     }
     if (obj == viewport() && m_dragFrom >= 0) {
-        if (ev->type() == QEvent::MouseMove) {
-            auto *me = static_cast<QMouseEvent*>(ev);
-            // Find which position we're hovering over
-            QPoint inContainer = m_container->mapFrom(viewport(), me->pos());
-            int dropPos = m_items.size(); // default: after last
+        auto dropPosAt = [this](QPoint viewportPt) {
+            QPoint inContainer = m_container->mapFrom(viewport(), viewportPt);
+            int pos = m_items.size();
             for (int i = 0; i < m_items.size(); ++i) {
-                QRect r = m_items[i]->geometry();
-                if (inContainer.y() < r.center().y()) {
-                    dropPos = i;
-                    break;
+                if (inContainer.y() < m_items[i]->geometry().center().y()) {
+                    pos = i; break;
                 }
             }
-            updateDragIndicator(dropPos);
+            return pos;
+        };
+
+        if (ev->type() == QEvent::MouseMove) {
+            auto *me = static_cast<QMouseEvent*>(ev);
+            // Auto-scroll when dragging near top or bottom edge
+            const int SCROLL_ZONE = 30;
+            QScrollBar *vb = verticalScrollBar();
+            int y = me->pos().y();
+            if (y < SCROLL_ZONE)
+                vb->setValue(vb->value() - 8);
+            else if (y > viewport()->height() - SCROLL_ZONE)
+                vb->setValue(vb->value() + 8);
+
+            updateDragIndicator(dropPosAt(me->pos()));
             return true;
         }
         if (ev->type() == QEvent::MouseButtonRelease) {
             auto *me = static_cast<QMouseEvent*>(ev);
-            QPoint inContainer = m_container->mapFrom(viewport(), me->pos());
-            int dropPos = m_items.size();
-            for (int i = 0; i < m_items.size(); ++i) {
-                QRect r = m_items[i]->geometry();
-                if (inContainer.y() < r.center().y()) {
-                    dropPos = i;
-                    break;
-                }
-            }
-            endDrag(dropPos);
+            endDrag(dropPosAt(me->pos()));
             return true;
         }
     }
