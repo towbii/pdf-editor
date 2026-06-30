@@ -6,25 +6,40 @@ A fast, open-source PDF editor for Windows — built with C++, Qt 6 and MuPDF. *
 
 **[⬇ Download Installer (Windows 10/11, 64-bit)](../../releases/latest)**
 
-Run `PDFEditor-Setup.exe` and follow the wizard. That's it — no Qt, no Visual Studio, no dependencies to install yourself. Everything is bundled.
+Run `PDFEditor-Setup.exe` and follow the wizard. No Qt, no Visual Studio, no dependencies — everything is bundled.
 
 ## Features
 
-- **Highlight** — select text and highlight it; drag over any area for a coloured rectangle
-- **Pen** — freehand drawing with colour picker and adjustable size
-- **Eraser** — removes any annotation or ink stroke
-- **Text** — click anywhere to insert a text annotation
-- **Signatures** — create, save and reuse multiple signatures (drawn or imported from image)
-- **Page tools** — rotate, delete, duplicate pages (annotations copy with the page)
-- **Form filling** — detect and fill PDF form fields
-- **Thumbnails** — live page preview panel, updates as you edit
-- **Undo / Redo** — full history
+### Annotation tools
+- **Highlight** — drag over text to highlight it; drag over any area for a flat coloured rectangle
+- **Pen** — freehand drawing with colour picker and adjustable stroke width
+- **Eraser** — removes any annotation or ink stroke with a single drag
+- **Text** — click anywhere on the page to insert a text annotation
+- **Signatures** — create, save and reuse multiple signatures; drawn with the mouse or imported from a PNG/JPG
+
+### Page management
+- **Rotate, delete, duplicate** pages — annotations and ink are preserved on duplication
+- **Merge PDFs** — drag a PDF onto an open document to append its pages, or use the Merge dialog (also supports drag & drop)
+- **Split / extract pages** — save a subset of pages to a new file
+- **Insert blank page** — right-click in the thumbnail panel
+
+### Viewing
+- **Real-time zoom slider** — instant live preview while dragging; snaps to 100% within ±4%
+- **Auto-center on zoom** — view stays locked on the same content while zooming in and out
+- **Text-aware scroll** — on open, automatically scrolls to the first line of text (not blank margins)
+- **Page thumbnails** — live sidebar that updates after every edit
+- **Smooth eraser** — no lag when erasing across annotations
+
+### Other
+- **Form filling** — detects and fills PDF form fields
+- **Watermark** — add semi-transparent text watermarks
+- **Undo / Redo** — full history for all edits
 - **Dark and light theme**
+- **Drag & drop** — open PDFs by dropping them onto the window; drop PNGs into the signature picker to import
 - **Register as Windows default PDF viewer**
+- **Customisable keyboard shortcuts** (Settings → Keyboard Shortcuts)
 
 ## Keyboard Shortcuts
-
-All shortcuts can be changed in **Settings → Keyboard Shortcuts**.
 
 | Key | Action |
 |-----|--------|
@@ -42,17 +57,17 @@ All shortcuts can be changed in **Settings → Keyboard Shortcuts**.
 | `Ctrl+scroll` | Zoom |
 | `Ctrl+[` / `Ctrl+]` | Rotate page |
 
+All shortcuts can be changed in **Settings → Keyboard Shortcuts**.
+
 ## Contributing
 
 Pull requests are welcome. Please open an issue first for larger changes so we can discuss the approach.
 
 ## Build from Source
 
-> This section is for developers who want to contribute to the code.
-> End users should use the installer above.
+> For developers only. End users should use the installer above.
 
 **Requirements:**
-
 - Windows 10/11 64-bit
 - [Visual Studio 2022](https://visualstudio.microsoft.com/) — Desktop C++ workload
 - [Qt 6.6+](https://www.qt.io/download) — MSVC 2022 64-bit component
