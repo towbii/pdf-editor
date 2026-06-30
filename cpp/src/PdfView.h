@@ -144,8 +144,8 @@ private:
     bool    m_needsEraserReload = false;
     QTimer *m_eraserTimer       = nullptr;
 
-    // signature hover position (for floating preview before drag)
-    QPoint m_sigHoverPos;
+    // signature hover position; (-1,-1) = not hovering (ghost hidden)
+    QPoint m_sigHoverPos {-1, -1};
 
     // inline text editor overlay
     QLineEdit *m_textEditor = nullptr;

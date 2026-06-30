@@ -486,7 +486,7 @@ void PdfPageWidget::paintEvent(QPaintEvent *) {
                     p.setBrush(Qt::NoBrush);
                     p.drawRect(previewRect);
                 }
-            } else {
+            } else if (m_sigHoverPos.x() >= 0) {
                 // Hovering — show a floating ghost of the signature at the cursor
                 float baseW = 120.f;
                 float aspect = float(sigPm.height()) / qMax(1, sigPm.width());
@@ -879,7 +879,8 @@ void PdfPageWidget::mouseReleaseEvent(QMouseEvent *ev) {
         break;
     case Tool::Signature: {
         if (!m_sigSizing) break;
-        m_sigSizing = false;
+        m_sigSizing    = false;
+        m_sigHoverPos  = {-1, -1};  // hide ghost immediately after placing
         update();
         if (!doc || m_view->m_sigPixmap.isNull()) break;
         QPoint origin  = m_sigOrigin;
