@@ -1074,7 +1074,7 @@ void MainWindow::openFormFiller() {
 void MainWindow::openSignatureDialog() {
     SignaturePickerDialog dlg(this);
     if (dlg.exec() == QDialog::Accepted && !dlg.selectedPath().isEmpty()) {
-        m_view->setSignaturePath(dlg.selectedPath());
+        m_view->setSignaturePixmap(dlg.selectedPixmap());
         setActiveTool(Tool::Signature);
         m_actSignature->setChecked(true);
         statusBar()->showMessage(tr("Signature: click on page to place, drag to resize"), 3000);

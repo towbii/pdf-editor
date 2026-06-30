@@ -13,7 +13,11 @@ class SignaturePickerDialog : public QDialog {
     Q_OBJECT
 public:
     explicit SignaturePickerDialog(QWidget *parent = nullptr);
-    QString selectedPath() const { return m_selected; }
+    QString selectedPath()   const { return m_selected; }
+    QPixmap selectedPixmap() const { return loadEncrypted(m_selected); }
+
+    // Public so MainWindow can decrypt a .sig before passing to PdfView
+    static QPixmap loadEncrypted(const QString &path);
 
 protected:
     void dragEnterEvent(QDragEnterEvent *ev) override;
@@ -36,6 +40,4 @@ private:
 
     // Save pixmap as encrypted .sig file; returns saved path or empty on error
     QString saveEncrypted(const QPixmap &px, const QString &destPath);
-    // Load pixmap from encrypted .sig file
-    static QPixmap loadEncrypted(const QString &path);
 };

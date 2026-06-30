@@ -9,6 +9,8 @@
 #include <QMenu>
 #include <QScrollBar>
 #include <QFileDialog>
+#include <QDir>
+#include <QFile>
 #include <QApplication>
 #include <QClipboard>
 #include <QCursor>
@@ -200,9 +202,24 @@ void PdfView::setTool(Tool t) {
 }
 
 void PdfView::updateSignatureCursor() {
-    // Drag defines the size, so always use a crosshair. The placed signature
-    // preview is shown live in paintEvent while the user drags.
-    for (auto *pw : m_pages) pw->setCursor(Qt::CrossCursor);
+    if (m_sigPixmap.isNull()) {
+        for (auto *pw : m_pages) pw->setCursor(Qt::CrossCursor);
+        return;
+    }
+    // Show the signature itself as the cursor (max 64px wide for readability)
+    constexpr int MAX_CUR = 64;
+    QPixmap small = m_sigPixmap.width() > MAX_CUR
+                    ? m_sigPixmap.scaledToWidth(MAX_CUR, Qt::SmoothTransformation)
+                    : m_sigPixmap;
+    // Compose onto transparent background so ARGB is clean
+    QPixmap cur(small.size());
+    cur.fill(Qt::transparent);
+    QPainter pp(&cur);
+    pp.setOpacity(0.90);
+    pp.drawPixmap(0, 0, small);
+    pp.end();
+    QCursor sigCursor(cur, 0, cur.height() - 1); // hotspot at bottom-left
+    for (auto *pw : m_pages) pw->setCursor(sigCursor);
 }
 
 void PdfView::refreshAll() {
@@ -418,8 +435,8 @@ void PdfPageWidget::paintEvent(QPaintEvent *) {
     }
 
     // Signature drag-to-size preview
-    if (m_view->m_tool == Tool::Signature && !m_view->m_sigPath.isEmpty()) {
-        QPixmap sigPm(m_view->m_sigPath);
+    if (m_view->m_tool == Tool::Signature && !m_view->m_sigPixmap.isNull()) {
+        const QPixmap &sigPm = m_view->m_sigPixmap;
         if (!sigPm.isNull()) {
             if (m_sigSizing) {
                 // Dragging to define the rectangle — preserve aspect ratio in preview
@@ -834,7 +851,7 @@ void PdfPageWidget::mouseReleaseEvent(QMouseEvent *ev) {
         if (!m_sigSizing) break;
         m_sigSizing = false;
         update();
-        if (!doc || m_view->m_sigPath.isEmpty()) break;
+        if (!doc || m_view->m_sigPixmap.isNull()) break;
         QPoint origin  = m_sigOrigin;
         QPoint current = m_sigCurrent;
         int dx = current.x() - origin.x();
@@ -1001,30 +1018,28 @@ bool PdfPageWidget::eventFilter(QObject *obj, QEvent *ev) {
 
 void PdfPageWidget::placeSignature(QPoint pos) {
     PdfDocument *doc = m_view->m_doc;
-    if (!doc) return;
-    if (m_view->m_sigPath.isEmpty()) return;
+    if (!doc || m_view->m_sigPixmap.isNull()) return;
 
     QPointF pdf = toPdf(pos);
+    const QPixmap &sigPm = m_view->m_sigPixmap;
 
-    // Default size: 120 screen-px wide, preserving aspect ratio
-    QPixmap sigPm(m_view->m_sigPath);
     float baseW = 120.f / m_view->m_zoom;
-    float aspect = (sigPm.isNull() || sigPm.width() == 0) ? 0.4f
-                   : float(sigPm.height()) / sigPm.width();
-    float w = baseW;
-    float h = baseW * aspect;
+    float aspect = sigPm.width() > 0 ? float(sigPm.height()) / sigPm.width() : 0.4f;
+    float w = baseW, h = baseW * aspect;
 
-    // insertImage centers at (cx,cy)
-    if (doc->insertImage(m_pageNum, m_view->m_sigPath,
-            (float)pdf.x(), (float)pdf.y(), w, h)) {
+    // Write to temp PNG, embed in PDF, delete temp immediately
+    QString tmp = QDir::temp().filePath("pdfeditor_sig_tmp.png");
+    sigPm.save(tmp, "PNG");
+    if (doc->insertImage(m_pageNum, tmp, (float)pdf.x(), (float)pdf.y(), w, h)) {
         reload();
         emit m_view->modified();
     }
+    QFile::remove(tmp);
 }
 
 void PdfPageWidget::placeSignatureRect(QPoint origin, QPoint end) {
     PdfDocument *doc = m_view->m_doc;
-    if (!doc || m_view->m_sigPath.isEmpty()) return;
+    if (!doc || m_view->m_sigPixmap.isNull()) return;
 
     QRect screenRect = QRect(origin, end).normalized();
     if (screenRect.width() < 5 || screenRect.height() < 5) {
@@ -1034,26 +1049,26 @@ void PdfPageWidget::placeSignatureRect(QPoint origin, QPoint end) {
 
     QPointF tl = toPdf(screenRect.topLeft());
     QPointF br = toPdf(screenRect.bottomRight());
-    float w  = (float)(br.x() - tl.x());
-    float h  = (float)(br.y() - tl.y());
+    float w = (float)(br.x() - tl.x());
+    float h = (float)(br.y() - tl.y());
 
-    // Preserve signature's natural aspect ratio (fit within dragged rect)
-    QPixmap sigPm(m_view->m_sigPath);
-    if (!sigPm.isNull() && sigPm.width() > 0 && sigPm.height() > 0) {
+    const QPixmap &sigPm = m_view->m_sigPixmap;
+    if (sigPm.width() > 0 && sigPm.height() > 0) {
         float natAspect = float(sigPm.height()) / float(sigPm.width());
-        if (h / w > natAspect)
-            h = w * natAspect;
-        else
-            w = h / natAspect;
+        if (h / w > natAspect) h = w * natAspect;
+        else                   w = h / natAspect;
     }
 
     float midX = (float)((tl.x() + br.x()) * 0.5f);
     float midY = (float)((tl.y() + br.y()) * 0.5f);
 
-    if (doc->insertImage(m_pageNum, m_view->m_sigPath, midX, midY, w, h)) {
+    QString tmp = QDir::temp().filePath("pdfeditor_sig_tmp.png");
+    sigPm.save(tmp, "PNG");
+    if (doc->insertImage(m_pageNum, tmp, midX, midY, w, h)) {
         reload();
         emit m_view->modified();
     }
+    QFile::remove(tmp);
 }
 
 // ──── Resize mode ────────────────────────────────────────────────────────────

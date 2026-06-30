@@ -25,8 +25,8 @@ public:
     float zoom() const { return m_zoom; }
     void setTool(Tool t);
     Tool tool() const { return m_tool; }
-    void setSignaturePath(const QString &path) {
-        m_sigPath = path;
+    void setSignaturePixmap(const QPixmap &px) {
+        m_sigPixmap = px;
         if (m_tool == Tool::Signature) updateSignatureCursor();
     }
 
@@ -58,7 +58,7 @@ private:
     PdfDocument *m_doc;
     float m_zoom = 1.0f;
     Tool  m_tool = Tool::Select;
-    QString m_sigPath;
+    QPixmap m_sigPixmap;
     QColor m_hlColor  {255, 255, 0};
     QColor m_penColor {0, 0, 0};
     float  m_penWidth = 2.f;
