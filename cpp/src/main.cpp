@@ -88,7 +88,7 @@ protected:
         p.setPen(QColor("#666666"));
         p.setFont(QFont("Segoe UI", 11));
         p.drawText(QRect(0, 150, width(), 26), Qt::AlignCenter,
-                   "Professional PDF Editor");
+                   "Open Source PDF Editor");
 
         // Loading bar track
         QRect barBg(60, 206, width()-120, 5);
