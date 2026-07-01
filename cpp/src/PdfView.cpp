@@ -805,60 +805,62 @@ void PdfPageWidget::mouseReleaseEvent(QMouseEvent *ev) {
 
         if (!doc || !wasSelecting) break;
 
-        // Copy selected PDF text to clipboard after rubber-band
-        {
-            QPointF p0 = toPdf(m_selStart.toPoint());
-            QPointF p1 = toPdf(m_selEnd.toPoint());
-            const auto chars = doc->getChars(m_pageNum);
-            QString sel;
-            if (!chars.isEmpty()) {
-                float avgH = 0;
-                for (const auto &c : chars) avgH += (c.y1 - c.y0);
-                avgH /= chars.size();
-                float anchorY = p0.y(), anchorX = p0.x();
-                float releaseY = p1.y(), releaseX = p1.x();
-                if (anchorY > releaseY) { std::swap(anchorY, releaseY); std::swap(anchorX, releaseX); }
-                float lineThresh = qMax(avgH * 0.55f, 2.f);
-                float prevY = -1e9f;
-                for (const CharBox &c : chars) {
-                    float cy = (c.y0 + c.y1) * 0.5f;
-                    float cx = (c.x0 + c.x1) * 0.5f;
-                    bool onFirst  = qAbs(cy - anchorY)  < lineThresh;
-                    bool onLast   = qAbs(cy - releaseY) < lineThresh;
-                    bool inMiddle = (cy > anchorY + lineThresh && cy < releaseY - lineThresh);
-                    bool include  = false;
-                    if (onFirst && onLast)  include = (cx >= anchorX && cx <= releaseX);
-                    else if (onFirst)       include = (cx >= anchorX);
-                    else if (onLast)        include = (cx <= releaseX);
-                    else if (inMiddle)      include = true;
-                    if (include) {
-                        if (prevY > 0 && qAbs(cy - prevY) > lineThresh) sel += '\n';
-                        sel += c.ch;
-                        prevY = cy;
-                    }
+        QPointF p0 = toPdf(m_selStart.toPoint());
+        QPointF p1 = toPdf(m_selEnd.toPoint());
+        QRectF pdfRect(qMin(p0.x(),p1.x()), qMin(p0.y(),p1.y()),
+                       qAbs(p1.x()-p0.x()), qAbs(p1.y()-p0.y()));
+
+        // Extract text using the same char-matching as the rubber-band highlight
+        // (guaranteed correct coordinate space — same as toPdf())
+        const auto chars = doc->getChars(m_pageNum);
+        QString sel;
+        if (!chars.isEmpty()) {
+            float avgH = 0;
+            for (const auto &c : chars) avgH += (c.y1 - c.y0);
+            avgH /= chars.size();
+            float anchorY = p0.y(), anchorX = p0.x();
+            float releaseY = p1.y(), releaseX = p1.x();
+            if (anchorY > releaseY) { std::swap(anchorY, releaseY); std::swap(anchorX, releaseX); }
+            float lineThresh = qMax(avgH * 0.55f, 2.f);
+            float prevY = -1e9f;
+            for (const CharBox &c : chars) {
+                float cy = (c.y0 + c.y1) * 0.5f;
+                float cx = (c.x0 + c.x1) * 0.5f;
+                bool onFirst  = qAbs(cy - anchorY)  < lineThresh;
+                bool onLast   = qAbs(cy - releaseY) < lineThresh;
+                bool inMiddle = (cy > anchorY + lineThresh && cy < releaseY - lineThresh);
+                bool include  = false;
+                if (onFirst && onLast)  include = (cx >= anchorX && cx <= releaseX);
+                else if (onFirst)       include = (cx >= anchorX);
+                else if (onLast)        include = (cx <= releaseX);
+                else if (inMiddle)      include = true;
+                if (include) {
+                    if (prevY > 0 && qAbs(cy - prevY) > lineThresh) sel += '\n';
+                    sel += c.ch;
+                    prevY = cy;
                 }
             }
             sel = sel.trimmed();
-            if (!sel.isEmpty()) {
-                QApplication::clipboard()->setText(sel);
-                emit m_view->selectionChanged(sel);
-            }
         }
 
-        // If the drag covered a meaningful area, extract text and open inline editor
-        {
-            QRect selWidgetRect = QRect(m_selStart.toPoint(), m_selEnd.toPoint()).normalized();
-            if (selWidgetRect.width() > 10 && selWidgetRect.height() > 5) {
-                QPointF p0 = toPdf(m_selStart.toPoint());
-                QPointF p1 = toPdf(m_selEnd.toPoint());
-                QRectF pdfRect(qMin(p0.x(),p1.x()), qMin(p0.y(),p1.y()),
-                               qAbs(p1.x()-p0.x()), qAbs(p1.y()-p0.y()));
-                QString text = doc->extractNativeText(m_pageNum, pdfRect);
-                if (text.isEmpty())
-                    text = doc->ocrRect(m_pageNum, pdfRect);
+        // Copy to clipboard
+        if (!sel.isEmpty()) {
+            QApplication::clipboard()->setText(sel);
+            emit m_view->selectionChanged(sel);
+        }
+
+        // If meaningful drag: open inline editor pre-filled with extracted text.
+        // For pages with no native text layer (scanned), fall back to Tesseract OCR.
+        // Do not open editor if nothing was found (blank area drag).
+        QRect selWidgetRect = QRect(m_selStart.toPoint(), m_selEnd.toPoint()).normalized();
+        if (selWidgetRect.width() > 10 && selWidgetRect.height() > 5) {
+            QString editorText = sel;
+            if (editorText.isEmpty() && chars.isEmpty())
+                editorText = doc->ocrRect(m_pageNum, pdfRect);
+            if (!editorText.isEmpty()) {
                 m_selRects.clear();
                 update();
-                placeText(selWidgetRect.topLeft(), text);
+                placeText(selWidgetRect.topLeft(), editorText);
             }
         }
         break;
