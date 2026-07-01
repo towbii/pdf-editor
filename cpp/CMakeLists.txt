@@ -7,6 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui PrintSupport)
+find_package(Tesseract CONFIG REQUIRED)
 
 # ---------- MuPDF ----------
 # Try vcpkg-style find first (package name: unofficial-libmupdf)
@@ -83,6 +84,7 @@ endif()
 target_link_libraries(PDFEditor PRIVATE
     Qt6::Core Qt6::Widgets Qt6::Gui Qt6::PrintSupport
     ${MUPDF_TARGET}
+    Tesseract::libtesseract
 )
 if(WIN32)
     target_link_libraries(PDFEditor PRIVATE
@@ -90,6 +92,15 @@ if(WIN32)
     qt_generate_deploy_app_script(TARGET PDFEditor
         OUTPUT_SCRIPT deploy_script NO_COMPILER_RUNTIME)
     install(SCRIPT ${deploy_script})
+
+    # Copy tessdata (OCR language model)
+    add_custom_command(TARGET PDFEditor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:PDFEditor>/tessdata"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/tessdata/eng.traineddata"
+            "$<TARGET_FILE_DIR:PDFEditor>/tessdata/eng.traineddata"
+        COMMENT "Copying tessdata/eng.traineddata"
+    )
 
     # Copy Qt6PrintSupport.dll next to the exe (windeployqt sometimes misses it)
     find_file(QT_PRINTSUPPORT_DLL Qt6PrintSupport.dll

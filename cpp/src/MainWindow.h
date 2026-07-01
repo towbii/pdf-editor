@@ -71,7 +71,7 @@ private:
 
     // Tool actions (checkable)
     QAction *m_actSelect, *m_actHighlight, *m_actPen,
-            *m_actEraser, *m_actText, *m_actSignature;
+            *m_actEraser, *m_actText, *m_actSignature, *m_actEditText;
     QAction *m_actUndo, *m_actRedo;
 
     // Keybind action map

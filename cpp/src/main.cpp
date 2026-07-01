@@ -12,7 +12,7 @@
 #  include <windows.h>
 #endif
 
-static constexpr const char *APP_VERSION = "1.5.5";
+static constexpr const char *APP_VERSION = "1.5.6";
 #include "Theme.h"
 
 class AnimatedSplash : public QWidget {

@@ -12,7 +12,7 @@
 #include <QMap>
 #include "PdfDocument.h"
 
-enum class Tool { Select, Highlight, Pen, Eraser, Text, Signature };
+enum class Tool { Select, Highlight, Pen, Eraser, Text, Signature, EditText };
 
 class PdfPageWidget;
 
@@ -147,6 +147,12 @@ private:
     // signature hover position; (-1,-1) = not hovering (ghost hidden)
     QPoint m_sigHoverPos {-1, -1};
 
+    // EditText tool: drag-to-select region, then OCR + cover + edit
+    QPoint  m_etDragStart;
+    QPoint  m_etDragEnd;
+    bool    m_etDragging   = false;
+    QString m_etPrefill;   // text pre-filled in the inline editor after OCR
+
     // inline text editor overlay
     QLineEdit *m_textEditor = nullptr;
 
@@ -166,7 +172,7 @@ private:
     QPointF toPdf(QPoint widgetPt) const;
     QRectF  toScreen(float x0, float y0, float x1, float y1) const;
 
-    void placeText(QPoint pos);
+    void placeText(QPoint pos, const QString &prefill = {});
     void commitTextEditor(bool cancel = false);
     void placeSignature(QPoint pos);
     void placeSignatureRect(QPoint origin, QPoint end);

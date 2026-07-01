@@ -80,6 +80,14 @@ public:
     bool insertImage(int pageNum, const QString &imgPath,
                      float cx, float cy, float w, float h);
 
+    // OCR / native text extraction for "Edit Text" tool
+    // Returns text from the PDF's own text layer within pdfRect (fast)
+    QString extractNativeText(int pageNum, const QRectF &pdfRect) const;
+    // Renders the region and runs Tesseract OCR (fallback for scanned pages)
+    QString ocrRect(int pageNum, const QRectF &pdfRect) const;
+    // Adds a white-filled rectangle annotation to cover/hide content
+    bool addWhiteRect(int pageNum, float x0, float y0, float x1, float y1);
+
     // Page ops
     bool rotatePage(int pageNum, int degrees);
     bool deletePage(int pageNum);

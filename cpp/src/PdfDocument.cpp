@@ -1,9 +1,14 @@
 #include "PdfDocument.h"
 #include <QDebug>
 #include <QFileInfo>
+#include <QCoreApplication>
+#include <QImage>
 #include <cstring>
 #include <cstdio>
 #include <cmath>
+#include <memory>
+#include <tesseract/baseapi.h>
+#include <leptonica/allheaders.h>
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -1396,4 +1401,136 @@ QVector<PdfDocument::OutlineItem> PdfDocument::getOutline() const {
         }
     } fz_catch(m_ctx) {}
     return result;
+}
+
+// ═══════════════════════════════════════════════════════════
+// OCR / native text extraction
+// ═══════════════════════════════════════════════════════════
+
+QString PdfDocument::extractNativeText(int pageNum, const QRectF &pdfRect) const {
+    if (!m_doc) return {};
+    fz_page *page = nullptr;
+    fz_stext_page *stext = nullptr;
+    QString result;
+    fz_try(m_ctx) {
+        page = fz_load_page(m_ctx, m_doc, pageNum);
+        fz_rect mb = fz_bound_page(m_ctx, page);
+        float pageH = mb.y1 - mb.y0;
+        // Convert our top-down rect to MuPDF's bottom-up space
+        fz_rect query = fz_make_rect(
+            (float)pdfRect.left(),
+            pageH - (float)pdfRect.bottom(),
+            (float)pdfRect.right(),
+            pageH - (float)pdfRect.top());
+        fz_stext_options opts{};
+        stext = fz_new_stext_page_from_page(m_ctx, page, &opts);
+        QString line;
+        for (fz_stext_block *b = stext->first_block; b; b = b->next) {
+            if (b->type != FZ_STEXT_BLOCK_TEXT) continue;
+            for (fz_stext_line *l = b->u.t.first_line; l; l = l->next) {
+                line.clear();
+                for (fz_stext_char *c = l->first_char; c; c = c->next) {
+                    if (fz_is_point_inside_rect(c->origin, query))
+                        line += QChar(c->c);
+                }
+                if (!line.isEmpty()) {
+                    if (!result.isEmpty()) result += '\n';
+                    result += line;
+                }
+            }
+        }
+    } fz_catch(m_ctx) {}
+    if (stext) fz_drop_stext_page(m_ctx, stext);
+    if (page)  fz_drop_page(m_ctx, page);
+    return result.trimmed();
+}
+
+QString PdfDocument::ocrRect(int pageNum, const QRectF &pdfRect) const {
+    if (!m_doc) return {};
+    pdf_page *pp = loadPdfPage(pageNum);
+    if (!pp) return {};
+
+    // Render the region at 200 DPI for good OCR accuracy
+    const float scale = 200.f / 72.f;
+    fz_matrix ctm = fz_scale(scale, scale);
+    fz_rect mb; fz_matrix ignore;
+    pdf_page_transform(m_ctx, pp, &mb, &ignore);
+    float pageH = mb.y1 - mb.y0;
+
+    // Convert our top-down coords to MuPDF bottom-up
+    fz_rect clip = fz_make_rect(
+        (float)pdfRect.left(),
+        pageH - (float)pdfRect.bottom(),
+        (float)pdfRect.right(),
+        pageH - (float)pdfRect.top());
+    fz_irect devClip = fz_round_rect(fz_transform_rect(clip, ctm));
+
+    fz_pixmap *pix = nullptr;
+    QString result;
+    fz_try(m_ctx) {
+        pix = fz_new_pixmap_with_bbox(m_ctx, fz_device_rgb(m_ctx), devClip, nullptr, 0);
+        fz_clear_pixmap_with_value(m_ctx, pix, 0xFF);
+        fz_device *dev = fz_new_draw_device(m_ctx, ctm, pix);
+        fz_run_page(m_ctx, (fz_page*)pp, dev, fz_identity, nullptr);
+        fz_close_device(m_ctx, dev);
+        fz_drop_device(m_ctx, dev);
+
+        int w = fz_pixmap_width(m_ctx, pix);
+        int h = fz_pixmap_height(m_ctx, pix);
+        unsigned char *samples = fz_pixmap_samples(m_ctx, pix);
+        // fz_device_rgb gives 3 bytes per pixel
+        QImage img(w, h, QImage::Format_RGB888);
+        for (int y = 0; y < h; y++)
+            memcpy(img.scanLine(y), samples + (size_t)y * w * 3, (size_t)w * 3);
+
+        fz_drop_pixmap(m_ctx, pix);
+        pix = nullptr;
+
+        QString tessData = QCoreApplication::applicationDirPath() + "/tessdata";
+        tesseract::TessBaseAPI api;
+        if (api.Init(tessData.toUtf8().constData(), "eng") == 0) {
+            api.SetPageSegMode(tesseract::PSM_AUTO);
+            api.SetImage(img.bits(), img.width(), img.height(), 3,
+                         (int)img.bytesPerLine());
+            std::unique_ptr<char[]> text(api.GetUTF8Text());
+            if (text) result = QString::fromUtf8(text.get()).trimmed();
+            api.End();
+        }
+    } fz_catch(m_ctx) {
+        if (pix) fz_drop_pixmap(m_ctx, pix);
+        qWarning() << "ocrRect:" << fz_caught_message(m_ctx);
+    }
+    fz_drop_page(m_ctx, (fz_page*)pp);
+    return result;
+}
+
+bool PdfDocument::addWhiteRect(int pageNum, float x0, float y0, float x1, float y1) {
+    pdf_page *pp = loadPdfPage(pageNum);
+    if (!pp) return false;
+    bool ok = false;
+    fz_try(m_ctx) {
+        fz_rect mb; fz_matrix ctm;
+        pdf_page_transform(m_ctx, pp, &mb, &ctm);
+        float pageH = mb.y1 - mb.y0;
+        snapshot();
+        // Convert top-down to PDF bottom-up
+        fz_rect r = fz_make_rect(x0, pageH - y1, x1, pageH - y0);
+        pdf_annot *a = pdf_create_annot(m_ctx, pp, PDF_ANNOT_SQUARE);
+        pdf_set_annot_rect(m_ctx, a, r);
+        float white[3] = {1.f, 1.f, 1.f};
+        pdf_set_annot_color(m_ctx, a, 3, white);
+        pdf_set_annot_interior_color(m_ctx, a, 3, white);
+        // Zero border width so no outline is visible
+        pdf_obj *bs = pdf_new_dict(m_ctx, m_pdoc, 1);
+        pdf_dict_put_real(m_ctx, bs, PDF_NAME(W), 0.0);
+        pdf_dict_put(m_ctx, pdf_annot_obj(m_ctx, a), PDF_NAME(BS), bs);
+        pdf_drop_obj(m_ctx, bs);
+        pdf_update_annot(m_ctx, a);
+        ok = true;
+    } fz_catch(m_ctx) {
+        qWarning() << "addWhiteRect:" << fz_caught_message(m_ctx);
+    }
+    fz_drop_page(m_ctx, (fz_page*)pp);
+    if (ok) invalidatePage(pageNum);
+    return ok;
 }

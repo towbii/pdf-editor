@@ -506,6 +506,14 @@ void PdfPageWidget::paintEvent(QPaintEvent *) {
         }
     }
 
+    // EditText: drag-selection rectangle
+    if (m_etDragging) {
+        QRect sel = QRect(m_etDragStart, m_etDragEnd).normalized();
+        p.setBrush(QColor(255, 165, 0, 35));
+        p.setPen(QPen(QColor(220, 120, 0), 1.5, Qt::DashLine));
+        p.drawRect(sel);
+    }
+
     // Pen stroke preview
     if (m_penDown && m_penStroke.size() >= 2) {
         p.setPen(QPen(m_view->m_penColor,
@@ -616,6 +624,12 @@ void PdfPageWidget::mousePressEvent(QMouseEvent *ev) {
         m_sigOrigin  = ev->pos();
         m_sigCurrent = ev->pos();
         m_sigSizing  = true;
+        break;
+
+    case Tool::EditText:
+        m_etDragStart = ev->pos();
+        m_etDragEnd   = ev->pos();
+        m_etDragging  = true;
         break;
     }
 }
@@ -743,6 +757,13 @@ void PdfPageWidget::mouseMoveEvent(QMouseEvent *ev) {
             m_sigCurrent = ev->pos();
         }
         update();
+        break;
+
+    case Tool::EditText:
+        if (m_etDragging) {
+            m_etDragEnd = ev->pos();
+            update();
+        }
         break;
 
     default: break;
@@ -894,6 +915,39 @@ void PdfPageWidget::mouseReleaseEvent(QMouseEvent *ev) {
             placeSignature(ev->pos());
         break;
     }
+    case Tool::EditText: {
+        if (!m_etDragging) break;
+        m_etDragging = false;
+        QRect sel = QRect(m_etDragStart, m_etDragEnd).normalized();
+        update();
+        if (sel.width() < 8 || sel.height() < 8 || !doc) break;
+
+        // Convert screen rect to PDF coords
+        QPointF p0 = toPdf(sel.topLeft());
+        QPointF p1 = toPdf(sel.bottomRight());
+        QRectF pdfRect(
+            qMin(p0.x(), p1.x()), qMin(p0.y(), p1.y()),
+            qAbs(p1.x() - p0.x()), qAbs(p1.y() - p0.y()));
+
+        // 1) Try native PDF text first (fast, no OCR needed)
+        QString text = doc->extractNativeText(m_pageNum, pdfRect);
+
+        // 2) Fallback: Tesseract OCR on the rendered region
+        if (text.isEmpty())
+            text = doc->ocrRect(m_pageNum, pdfRect);
+
+        // 3) Cover the original content with a white rectangle
+        doc->addWhiteRect(m_pageNum,
+            (float)pdfRect.left(), (float)pdfRect.top(),
+            (float)pdfRect.right(), (float)pdfRect.bottom());
+        reload();
+        emit m_view->modified();
+
+        // 4) Open inline editor at the centre of the selection, pre-filled
+        placeText(sel.center(), text);
+        break;
+    }
+
     default: break;
     }
 }
@@ -938,7 +992,7 @@ void PdfPageWidget::contextMenuEvent(QContextMenuEvent *ev) {
     else if (chosen == actIns)  emit m_view->pageInsertRequested(m_pageNum);
 }
 
-void PdfPageWidget::placeText(QPoint pos) {
+void PdfPageWidget::placeText(QPoint pos, const QString &prefill) {
     // Commit any existing editor first
     if (m_textEditor) commitTextEditor(false);
 
@@ -952,7 +1006,7 @@ void PdfPageWidget::placeText(QPoint pos) {
     // Create inline editor directly on the page widget
     auto *ed = new QLineEdit(this);
     m_textEditor = ed;
-    ed->setText(isEdit ? existing : "");
+    ed->setText(isEdit ? existing : prefill);
     int pxSize = qMax(10, int(m_view->m_fontSize * m_view->m_zoom));
     QFont f("Arial", pxSize);
     ed->setFont(f);

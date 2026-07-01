@@ -1,5 +1,5 @@
 #define AppName      "PDF Editor"
-#define AppVersion   "1.5.5"
+#define AppVersion   "1.5.6"
 #define AppPublisher "towbii"
 #define AppURL       "https://github.com/towbii/pdf"
 #define AppExeName   "PDFEditor.exe"
@@ -88,17 +88,30 @@ Source: "{#BuildDir}\Qt6Network.dll";    DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\Qt6Svg.dll";        DestDir: "{app}"; Flags: ignoreversion
 
 ; Runtime DLLs
-Source: "{#BuildDir}\brotlicommon.dll";  DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#BuildDir}\brotlidec.dll";     DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#BuildDir}\bz2.dll";           DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#BuildDir}\freetype.dll";      DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#BuildDir}\harfbuzz.dll";      DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#BuildDir}\jpeg62.dll";        DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#BuildDir}\libpng16.dll";      DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#BuildDir}\openjp2.dll";       DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#BuildDir}\z.dll";             DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#BuildDir}\opengl32sw.dll";    DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#BuildDir}\D3Dcompiler_47.dll";DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\brotlicommon.dll";     DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\brotlidec.dll";        DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\bz2.dll";              DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\freetype.dll";         DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\harfbuzz.dll";         DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\jpeg62.dll";           DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\libpng16.dll";         DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\openjp2.dll";          DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\z.dll";                DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\opengl32sw.dll";       DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\D3Dcompiler_47.dll";   DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; Tesseract OCR + its runtime dependencies
+Source: "{#BuildDir}\tesseract55.dll";      DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\leptonica-1.87.0.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\gif.dll";              DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\tiff.dll";             DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\libwebp.dll";          DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\libwebpmux.dll";       DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\libsharpyuv.dll";      DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\liblzma.dll";          DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\lz4.dll";              DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\zstd.dll";             DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\libcurl.dll";          DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\libcrypto-3-x64.dll";  DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 ; Qt plugins
 Source: "{#BuildDir}\platforms\*";        DestDir: "{app}\platforms";        Flags: ignoreversion recursesubdirs
@@ -112,6 +125,9 @@ Source: "{#BuildDir}\generic\*";          DestDir: "{app}\generic";          Fla
 ; Translations
 Source: "{#BuildDir}\en.qm";             DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#BuildDir}\translations\*";    DestDir: "{app}\translations";     Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
+
+; Tesseract OCR language data
+Source: "{#BuildDir}\tessdata\eng.traineddata"; DestDir: "{app}\tessdata"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#AppName}";              Filename: "{app}\{#AppExeName}"
