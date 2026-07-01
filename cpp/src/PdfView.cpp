@@ -860,7 +860,7 @@ void PdfPageWidget::mouseReleaseEvent(QMouseEvent *ev) {
             if (!editorText.isEmpty()) {
                 m_selRects.clear();
                 update();
-                placeText(selWidgetRect.topLeft(), editorText);
+                openSelectionEditor(selWidgetRect, pdfRect, editorText);
             }
         }
         break;
@@ -1039,6 +1039,68 @@ void PdfPageWidget::placeText(QPoint pos, const QString &prefill) {
     // Commit on Enter; focus-out also commits via editingFinished
     connect(ed, &QLineEdit::returnPressed,    this, doCommit);
     connect(ed, &QLineEdit::editingFinished,  this, doCommit);
+}
+
+void PdfPageWidget::openSelectionEditor(QRect widgetRect, QRectF pdfRect, const QString &prefill) {
+    if (m_textEditor) commitTextEditor(false);
+    PdfDocument *doc = m_view->m_doc;
+    if (!doc) return;
+
+    auto *ed = new QLineEdit(this);
+    m_textEditor = ed;
+    // Replace newlines with spaces so multi-line text fits a single-line editor
+    ed->setText(QString(prefill).replace('\n', ' '));
+    ed->selectAll();
+
+    int pxSize = qMax(10, int(m_view->m_fontSize * m_view->m_zoom));
+    QFont f("Arial", pxSize);
+    ed->setFont(f);
+    ed->setStyleSheet(
+        "QLineEdit { background: rgba(255,255,200,240); color: #000;"
+        " border: 1.5px solid #ff8800; padding: 2px; border-radius: 2px; }");
+
+    // Position the editor to overlay the selection rectangle exactly
+    int edW = qMax(widgetRect.width(), 180);
+    int edH = pxSize + 10;
+    int ex  = qBound(0, widgetRect.left(), width()  - edW);
+    int ey  = qBound(0, widgetRect.top(),  height() - edH);
+    ed->setGeometry(ex, ey, edW, edH);
+    ed->show();
+    ed->setFocus(Qt::OtherFocusReason);
+    ed->installEventFilter(this);
+
+    QRectF capturedPdfRect = pdfRect;
+    QPointF capturedPdfPos = toPdf(widgetRect.topLeft());
+    QPointer<QLineEdit> thisEd = ed;
+
+    auto doCommit = [this, thisEd, capturedPdfRect, capturedPdfPos]() {
+        if (!m_textEditor || m_textEditor != thisEd) return;
+        QLineEdit *editor = m_textEditor;
+        m_textEditor = nullptr;
+        editor->blockSignals(true);
+        QString text = editor->text().trimmed();
+        editor->hide();
+        editor->deleteLater();
+
+        PdfDocument *doc = m_view->m_doc;
+        if (!doc || text.isEmpty()) return;
+
+        // Cover the original content, then place the corrected text at the same spot
+        doc->addWhiteRect(m_pageNum,
+            (float)capturedPdfRect.left(), (float)capturedPdfRect.top(),
+            (float)capturedPdfRect.right(), (float)capturedPdfRect.bottom());
+        doc->insertText(m_pageNum, text,
+            (float)capturedPdfPos.x(), (float)capturedPdfPos.y(),
+            m_view->m_fontSize,
+            m_view->m_textColor.redF(),
+            m_view->m_textColor.greenF(),
+            m_view->m_textColor.blueF());
+        reload();
+        emit m_view->modified();
+    };
+
+    connect(ed, &QLineEdit::returnPressed,   this, doCommit);
+    connect(ed, &QLineEdit::editingFinished, this, doCommit);
 }
 
 void PdfPageWidget::commitTextEditor(bool cancel) {

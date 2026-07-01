@@ -168,6 +168,7 @@ private:
     QRectF  toScreen(float x0, float y0, float x1, float y1) const;
 
     void placeText(QPoint pos, const QString &prefill = {});
+    void openSelectionEditor(QRect widgetRect, QRectF pdfRect, const QString &prefill);
     void commitTextEditor(bool cancel = false);
     void placeSignature(QPoint pos);
     void placeSignatureRect(QPoint origin, QPoint end);
